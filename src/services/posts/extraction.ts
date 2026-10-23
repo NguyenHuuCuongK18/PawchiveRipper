@@ -52,7 +52,9 @@ export async function commitExtraction(job: PostJob, id: string): Promise<Extrac
   const files: ExtractedFile[] = [];
   for (const file of result.files) {
     const blob = await stagedFile(job.id, file.id); if (blob.size !== file.bytes) throw new Error('Extracted file is incomplete.');
-    files.push({ ...file, path: await writeRelativeFile(job.destination.directoryId, file.path, blob) });
+    // Extraction output is derived from this archive and owns its stable path.
+    // Re-extraction must replace stale contents instead of creating "(1)" copies.
+    files.push({ ...file, path: await writeRelativeFile(job.destination.directoryId, file.path, blob, true) });
   }
   return files;
 }

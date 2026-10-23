@@ -42,7 +42,13 @@ function writeArchiveFile(jobId: string, path: string, blob: Blob, overwrite: bo
       const { directory, name } = await parent(jobId, path, true, relative);
       const dot = name.lastIndexOf('.'); const stem = dot < 0 ? name : name.slice(0, dot); const extension = dot < 0 ? '' : name.slice(dot);
       let chosen = name;
-      if (!overwrite) for (let suffix = 0; ; suffix++) {
+      if (overwrite) {
+        try {
+          const existing = await (await directory.getFileHandle(name)).getFile();
+          // Avoid rewriting identical output, but replace stale data at this path.
+          if (existing.size === blob.size && await sha256(existing) === await sha256(blob)) return path;
+        } catch (error) { if (!(error instanceof DOMException && error.name === 'NotFoundError')) throw error; }
+      } else for (let suffix = 0; ; suffix++) {
         chosen = suffix ? `${stem} (${suffix})${extension}` : name;
         try {
           const existing = await (await directory.getFileHandle(chosen)).getFile();

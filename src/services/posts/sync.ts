@@ -82,6 +82,13 @@ export function emptySync(job: Pick<PostJob, 'source' | 'creatorName' | 'selecti
   const { origin, platform, creatorId } = job.source;
   return { format: 'archive-ripper-post-sync', version: 1, source: { origin, platform, creatorId }, creatorName: job.creatorName, updatedAt: new Date().toISOString(), selection: job.selection, posts: [] };
 }
+function preserveExtractedHistory(previous: PostSyncFile | undefined, incoming: PostSyncFile): PostSyncFile {
+  if (incoming.extracted?.length || !previous?.extracted?.length) return { ...incoming };
+  // The media ID includes the source hash. If path and size also match, a sparse
+  // history entry must not erase the completed extraction record for that source.
+  if (previous.kind !== 'file' || incoming.kind !== 'file' || previous.path !== incoming.path || previous.bytes !== incoming.bytes) return { ...incoming };
+  return { ...incoming, extracted: previous.extracted.map(file => ({ ...file })), ...(previous.originalKept === false ? { originalKept: false as const } : {}) };
+}
 export function mergeSync(base: PostSyncIndex | undefined, incoming: PostSyncIndex): PostSyncIndex {
   if (!base) return structuredClone(incoming);
   assertSyncSource(incoming, { ...base.source, postId: null });
@@ -89,7 +96,11 @@ export function mergeSync(base: PostSyncIndex | undefined, incoming: PostSyncInd
   for (const post of incoming.posts) {
     const previous = posts.get(post.id);
     if (!previous) { const copy = structuredClone(post); merged.posts.push(copy); posts.set(copy.id, copy); }
-    else { const files = new Map(previous.files.map(file => [file.id, file])); for (const file of post.files) files.set(file.id, { ...file }); previous.files = [...files.values()]; }
+    else {
+      const files = new Map(previous.files.map(file => [file.id, file]));
+      for (const file of post.files) files.set(file.id, preserveExtractedHistory(files.get(file.id), file));
+      previous.files = [...files.values()];
+    }
   }
   merged.selection = incoming.selection; merged.updatedAt = new Date().toISOString();
   return merged;
@@ -101,7 +112,7 @@ export function recordSaved(index: PostSyncIndex, task: PostTask, title: string)
   const file: PostSyncFile = { id: syncKey(task.id), quality: task.quality, kind: task.kind, path: task.path, bytes: task.bytes,
     ...(task.extraction?.state === 'done' && task.extraction.files.length ? { extracted: task.extraction.files, originalKept: false as const } : {}) };
   const old = post.files.findIndex(previous => previous.id === file.id);
-  if (old < 0) post.files.push(file); else post.files[old] = file;
+  if (old < 0) post.files.push(file); else post.files[old] = preserveExtractedHistory(post.files[old], file);
   index.updatedAt = new Date().toISOString();
 }
 export function zipSync(job: PostJob): PostSyncIndex {
