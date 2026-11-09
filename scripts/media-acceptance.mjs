@@ -8,7 +8,7 @@ const root = resolve('.'), output = resolve(`.media-check-${Date.now()}`);
 assert(output.startsWith(root + sep) && output.includes('.media-check-'));
 await mkdir(output);
 const post = JSON.parse(await readFile('tests/fixtures/post-11312487.sanitized.json', 'utf8'));
-const image = await readFile('tests/fixtures/bird_01.thumbnail.png');
+const image = await readFile('tests/fixtures/test-image.jpg');
 const source = `https://pawchive.pw/fanbox/user/${post.user}/post/${post.id}`;
 const hosts = ['kemono.cr', 'pawchive.pw'].flatMap(domain =>
   ['', 'img.', 'file.', 'n1.', 'n2.', 'n3.', 'n4.', 'n5.', 'n42.', 'cdn.', 'media.eu.'].map(prefix => prefix + domain));

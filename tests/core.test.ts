@@ -62,6 +62,19 @@ describe('files and source policy', () => {
     expect(buildFilename(record, 'png')).toContain('/2024-08-02_181701Z_1268995994440302725_001_');
     record.publishedAtUtc = null; expect(buildFilename(record, 'jpg')).toContain('unknown-date');
   });
+  it('replaces Unicode characters Chromium rejects while preserving Japanese text and emoji', () => {
+    expect(safeSegment('こゃめた')).toBe('こゃめた');
+    expect(safeSegment('🐈\u200d⬛👓')).toBe('🐈_⬛👓');
+    for (const character of ['\u0085', '\u200b', '\u200e', '\u2060', '\ufeff', '\ufdd0', '\uffff', '\u{1ffff}', '\ud800']) {
+      expect(safeSegment(`before${character}after`)).toBe('before_after');
+    }
+    expect(safeSegment('~ title\u3000~')).toBe('title');
+  });
+  it('does not leave half an emoji when truncating a long folder name', () => {
+    expect(safeSegment('a'.repeat(39) + '🐈')).toBe('a'.repeat(39));
+    expect(safeSegment('a'.repeat(38) + '🐈')).toBe('a'.repeat(38) + '🐈');
+    expect(safeSegment('a'.repeat(39) + '.extra')).toBe('a'.repeat(39));
+  });
   it('keeps original attempts opt-in, and never substitutes previews in original mode', () => {
     const record = normalizeMessages(messages, scope, 'test-job')[0];
     record.originalUrl = `https://n3.kemono.cr/data${record.kemonoPath}`;

@@ -1,4 +1,64 @@
-# Release check: 0.7.0
+# Release check: 0.9.1
+
+Local validation completed on 2026-11-09 on Windows with Node.js 26.7.0.
+
+- All 367 unit tests in 32 files passed, together with TypeScript checking, the production build and all seven isolated Chromium suites.
+- The browser suites cover general download/folder/restart behavior, native media hosts/fallback, selected-post continuation, tolerant discovery, archive extraction/settings, coexistence with Blocklist and duplicate/shared-file recovery. They now use an original synthetic geometric JPEG rather than captured creator artwork.
+- Packaging verification checked all 32 production files against the build, ZIP signatures, matching source/package versions, root/bundled license notices and the published SHA-256 checksum. The installable package includes the MIT license, third-party overview, ZIP library license and decoder/Vite notices.
+- Generated browser profiles, screenshots, reports and legacy ZIPs are excluded from Git. Cleanup scripts validate their targets inside the project root. Live recon output no longer overwrites committed fixtures. No personal browser profile or live creator media was used for this release check.
+- Source line endings are normalized to LF for consistent packages. GitHub CI separately runs the release gate on Linux/Node 24, with an independently checked-out Blocklist v1.0.0 for coexistence coverage.
+
+Release asset: [pawchive-ripper-0.9.1.zip](https://github.com/NguyenHuuCuongK18/PawchiveRipper/releases/download/v0.9.1/pawchive-ripper-0.9.1.zip), 631,175 bytes.
+
+SHA-256:
+
+```text
+3bd8ab2584e329ea9e4e43da4168b5159cf2d7d14e7cea8446965162d521a717
+```
+
+The release includes `SHA256SUMS.txt`. Native OS picker dialogs remain a manual smoke check. Install/update instructions are in the README and versioned release notes.
+
+## Previous local validation: 0.9.0
+
+Checked on 2026-11-09 using Windows, Node.js 26.7.0 and isolated Chromium profiles.
+
+- All 367 unit tests in 32 files passed, along with TypeScript checking and the production build. New checks cover repeated content-addressed attachments across posts/partitions, archive exclusions, distinct language variants, bounded file comparison, complete-byte verification after matching fingerprints, missing candidates, duplicate-reference validation, alternate-host recovery and extraction ordering.
+- All seven browser suites passed: general regression, native media hosts/fallback, selected-post continuation, discovery tolerance, archive settings/extraction, Blocklist coexistence and the new recap duplicate workflow. Temporary test profiles/downloads were removed. Native OS chooser dialogs remain a manual check.
+- The duplicate browser fixture saves an original post and monthly recap with repeated image/ZIP attachments, distinct EN/ZH archive contents and an explicitly excluded ZIP. Only three initial media transfers are made. Five duplicate output/download occurrences share retained copies. Different translations and a nested ZIP remain intact. Exported sync references reconnect to a folder without media transfers; a missing unique output downloads only its source archive. A later single-post job reuses an earlier extracted-only archive without downloading it again. Disabling deduplication preserves independent copies.
+- Public metadata for creator `540245` and posts `12837235`, `12624742`, `12428035`, `12505877` shows three recap ZIPs marked `-ZH` and four other source ZIPs with distinct hashes, including `-en-jp` and `-ne` names. These are preserved as potentially different versions, with per-archive UI selection. Similar names are never used as proof of duplicate content. No live creator ZIP or media was downloaded.
+- Package, lockfile, source manifest and built manifest identify Pawchive Ripper 0.9.0. Verification checked all 29 production files, ZIP signatures and exact build bytes. Shared extraction references are additive to the existing sync format; storage identifiers remain stable.
+
+Historical local artifact: `pawchive-ripper-0.9.0.zip`, 621,517 bytes (superseded by the public v0.9.1 release).
+
+SHA-256:
+
+```text
+750dd51ea2c68f03fef96d46fa8653611cf9f84e7d03ddf15ebe91e80f5ee23b
+```
+
+Update the extension directory already loaded by the browser, reload the extension and refresh the site tab. Enable **Avoid exact duplicates** and, for overlapping archive contents, **Extract downloaded archives**. **Archives & versions** can exclude individual bundles before downloading; filenames include their version/language suffixes. Different compressed archives require their first download before their contents can be compared. Existing earlier copies are preserved; new saves/syncs use the chosen duplicate policy. Shared file locations are recorded in `duplicates.json`.
+
+## Previous release: 0.8.0
+
+Checked on 2026-11-09 using Windows, Node.js 26.7.0 and isolated Chromium profiles.
+
+- All 350 unit tests in 31 files passed, along with TypeScript checking and the production build.
+- Controlled browser checks cover native media fetching, selected-post ZIP/folder continuation, discovery tolerance, archive extraction/settings, and simultaneous Pawchive Blocklist/Ripper operation. The general browser suite covers downloads, sync, permissions, cleanup and worker restart. Native OS chooser dialogs remain a manual check.
+- The new compatibility check loads the real sibling Blocklist extension, blocks every fixture card and still discovers image, MP4 and ZIP attachments. It repairs a cached text-only scan through the visible Refresh scan action, saves synthetic bytes through native fetch into a real ZIP and folder, extracts only the ZIP attachment, skips intact files on another sync, and uses the correct unpartitioned thumbnail after an original returns 404. The purple UI also passes the narrow-width overflow check. Screenshots are under `artifacts/pawchive-ripper-desktop.png` and `artifacts/pawchive-ripper-narrow.png`.
+- Public metadata from the first 100 posts of Fanbox creator `32539349` advertised 231 files: 213 images, 9 MP4s and 9 other files. The fixed normalizer recognized all 231, retained their original URLs, generated unpartitioned image thumbnails, and created 331 full-resolution/text tasks. No live creator media was downloaded.
+- Package, lockfile, source manifest and built manifest identify Pawchive Ripper 0.8.0. Verification checked all 29 production files, ZIP signatures and exact build bytes. Existing storage/schema identifiers are retained.
+
+Historical local artifact: `pawchive-ripper-0.8.0.zip`, 617,811 bytes (superseded by the public v0.9.1 release).
+
+SHA-256:
+
+```text
+8e1a75cd59376ae20b9df5c094d9fe76c73b5c32db0282c4fb38e95827dbd6e5
+```
+
+Update the extension directory already loaded by the browser, reload the extension, refresh the Pawchive/Kemono tab, then use **Refresh scan** (or **More options → Scan again**) before downloading. Earlier text-only exports need to be regenerated. Folder destination, post selection and saved sync history survive the scan refresh. Blocks affect the site's rendered cards; Ripper's post selection controls its downloads independently.
+
+## Previous release: 0.7.0
 
 Checked on 2026-10-16 using Windows, Node.js 26.7.0, and controlled Chromium browser scenarios.
 

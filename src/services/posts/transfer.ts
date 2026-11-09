@@ -55,7 +55,7 @@ export async function transferPost(jobId: string, task: PostTask, post: Archived
 export async function postTaskCached(jobId: string, task: PostTask): Promise<boolean> {
   try {
     if (task.bytes === null || (await stagedFile(jobId, task.id)).size !== task.bytes) return false;
-    for (const entry of task.extraction?.files || []) if ((await stagedFile(jobId, entry.id)).size !== entry.bytes) return false;
+    for (const entry of task.extraction?.files || []) if ((await stagedFile(jobId, entry.duplicateOf?.id || entry.id)).size !== entry.bytes) return false;
     return true;
   } catch { return false; }
 }

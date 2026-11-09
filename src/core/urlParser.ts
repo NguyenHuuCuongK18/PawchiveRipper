@@ -24,7 +24,12 @@ export function requireId(value: unknown): string {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new Error('Expected a Discord ID encoded as a string');
   return value;
 }
-const pathPattern = /^\/([0-9a-f]{2})\/([0-9a-f]{2})\/([0-9a-f]{64})\.(png|jpe?g|webp|gif|avif)$/i;
+// Pawchive originals may prefix the first shard with a storage partition (e.g. /2ab/cd/…).
+export const storedMediaPath = /^\/[0-9a-f]{2,3}\/[0-9a-f]{2}\/[0-9a-f]{64}(?:\.[a-z0-9_-]{1,16})?$/i;
+export function thumbnailPath(path: string): string {
+  return path.replace(/^\/[0-9a-f]([0-9a-f]{2})\//i, '/$1/');
+}
+const pathPattern = /^\/([0-9a-f]{2,3})\/([0-9a-f]{2})\/([0-9a-f]{64})\.(png|jpe?g|webp|gif|avif)$/i;
 export function imagePath(path: unknown): { path: string; hash: string } | null {
   if (typeof path !== 'string') return null;
   const match = pathPattern.exec(path);
@@ -32,7 +37,7 @@ export function imagePath(path: unknown): { path: string; hash: string } | null 
 }
 export function makeThumbnailUrl(path: unknown, origin = ARCHIVE_ORIGINS[0]): string | null {
   const valid = imagePath(path);
-  return valid && ARCHIVE_ORIGINS.includes(origin) ? `https://img.${new URL(origin).hostname}/thumbnail/data${valid.path}` : null;
+  return valid && ARCHIVE_ORIGINS.includes(origin) ? `https://img.${new URL(origin).hostname}/thumbnail/data${thumbnailPath(valid.path)}` : null;
 }
 export function safeMediaUrl(input: unknown): string | null {
   if (typeof input !== 'string') return null;

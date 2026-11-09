@@ -1,134 +1,112 @@
-# Kemono & Pawchive Archive Ripper
+# Pawchive Ripper
 
-A local-first Chromium extension with two saving services: **Discord** archives and **Posts** from Patreon / Pixiv Fanbox. Click the extension on `kemono.cr` or `pawchive.pw` to open a compact overlay on the current page. It is disabled on other sites.
+Save Patreon/Fanbox posts and Discord archives from **Pawchive** and **Kemono** to your device. The extension opens on the current page and supports creator folders, incremental sync, ZIP exports, archive extraction and exact duplicate handling.
 
-## Install or update
+[Download the latest release](https://github.com/NguyenHuuCuongK18/PawchiveRipper/releases/latest) · [Release notes](CHANGELOG.md) · [Report an issue](https://github.com/NguyenHuuCuongK18/PawchiveRipper/issues)
 
-1. Open `chrome://extensions`, `edge://extensions`, or `brave://extensions` and enable Developer mode.
-2. Choose **Load unpacked** and select the project's `dist` folder. For an existing installation, choose **Reload**.
-3. Refresh the supported site tab and click the extension icon. No separate dashboard is needed.
+## Install
 
-`KemonoPawchiveArchiveRipper-0.7.0.zip` contains the same build; extract it before loading it. Existing jobs remain in local storage. An unpacked extension keeps using its selected directory: updating this project's `dist` will not update a separately extracted ZIP directory. Reload the extension, refresh the archive tab, and confirm version **0.7.0** on the browser's extensions page. Use **More options → Scan again** to refresh an existing job's stored media URLs.
+Requires a Chromium browser supporting Manifest V3 (Chrome/Edge 120+; compatible Brave versions). Creator-folder saving also requires the File System Access API.
 
-Version 0.7.0 adds a scanned **File types** checklist, optional archive extraction, and portable `settings.json`. All advertised types, including unknown/custom extensions, are selected initially. Successful extraction keeps only the unpacked contents; corrupt, encrypted or unsupported archives are kept and reported. Folder sync restores these choices and verifies extracted files without repeatedly downloading their compressed originals.
+1. Download **pawchive-ripper-0.9.1.zip** from the [release assets](https://github.com/NguyenHuuCuongK18/PawchiveRipper/releases/tag/v0.9.1) and extract it into a permanent folder.
+2. Open **chrome://extensions** (or **edge://extensions** / **brave://extensions**) and enable **Developer mode**.
+3. Choose **Load unpacked** and select the extracted folder containing **manifest.json**.
+4. Refresh an open **pawchive.pw** or **kemono.cr** tab. Click the extension icon to open the overlay.
 
-Version 0.6.1 removes the five-minute limit that could restart a large file despite continuing data. Transfers now time out after 90 seconds without received data; image validation has a separate deadline. The overlay shows active filenames, received bytes, known sizes and retry waits. Text/images run before large source archives fill every transfer slot, and queue starts/completions use batched database writes. Collected files remain reusable when reloading or resuming an existing job. These changes reduce avoidable retries and bookkeeping; the full-resolution archive size and site/connection throughput still determine download time.
+Download the named extension ZIP, rather than GitHub's automatically generated **Source code** archives. Those contain source files and require a build. This is an unpacked extension release, not a signed Web Store package.
 
-Version 0.6.0 saves available content despite missing posts, unavailable files, or isolated unreadable pages. Missing post details retain whatever the list already supplied; transient errors retry before being skipped. Good records on a partly invalid page are retained. Discovery gaps and missing media are recorded together in `failures.json` in both ZIPs and creator folders. The overlay shows discovery errors, **Skip this error** can advance a paused scan, and **Retry failures** revisits skipped discovery items after scanning, retaining earlier posts and folder history. Site access failures, rate limits, and three consecutive bad pages pause automatically. A completed scan with reported gaps does not claim full coverage.
+**Updating:** replace the files inside the folder already loaded by your browser, click **Reload** on the extensions page, then refresh the site tab. Keep that folder path to retain the extension identity and its local jobs. If you develop from source, load **dist/** after building. An older cached scan can be refreshed with **Refresh scan** or **More options → Scan again**.
 
-Version 0.5.2 automatically retries invalid or interrupted API responses with backoff, keeping the current page and all earlier results. Creator scans can also recover through the alternate post-list endpoint. If responses remain unreadable after three attempts, **Resume** or **Retry failures** continues from the saved page after site access recovers.
+## Save posts
 
-Version 0.5.1 fixes scans stopping on Pawchive post IDs such as `p-1237087` with a misleading creator/service mismatch. After updating the existing extension directory and reloading, choose **Resume** or **Retry failures** on the paused job to continue from its saved page. Direct post links and archive sync history also support these IDs.
+1. Open a creator profile or an individual Patreon/Fanbox post on either supported site.
+2. Open the extension. Discovery starts for that page's scope. A post page defaults to **This post only**; use the scope selector to scan its creator instead.
+3. Wait for discovery. Expand **Posts** to choose a subset, or leave **All posts** selected.
+4. Choose **Images**, **Other files**, and/or **Post text**. **File types** selects individual advertised extensions. **Archives & versions** lets you search and exclude individual ZIPs or other bundles before downloading.
+5. Choose **Creator folder** or **ZIP file**, then save.
 
-Version 0.5.0 adds individual post checkboxes and preserves your post scope when connecting an existing creator folder, choosing `sync.json`, or importing history. A single-post page stays on that post. Selected posts from a profile stay selected. Extending an archive keeps earlier successful history without automatically downloading other posts. See [release notes](CHANGELOG.md) and the [release check](docs/RELEASE_CHECK.md).
+Posts use full resolution by default. **Save thumbnail if unavailable** only substitutes a preview for an original marked missing or returning HTTP 404/410. Previews go in **thumbnail/** and remain separate from originals. Network errors and rate limits use bounded retries.
 
-Version 0.4.3 adjusts simultaneous downloads automatically using browser-reported CPU, approximate RAM, and connection hints. Downloads start at one or two transfers, then increase after successful media transfers, up to **8 for Posts** or **4 for Discord** on capable devices. Low-memory devices, slow connections, and Data Saver use lower limits; unavailable hardware hints retain a ceiling of two. Rate limits halve concurrency immediately and honor Retry-After; repeated network/server failures also reduce it. A cooldown prevents immediate increases, and the policy persists with the job across worker restarts. **More options** shows the current limit. More simultaneous transfers can help when latency limits throughput; server speed, bandwidth, disk speed, and image decoding still affect the result. API discovery retains its existing pacing.
+For a creator folder, **Choose save location** opens a separate access tab. Allow the folder, return to the creator, and choose **Save to folder**. Keep the access tab open until saving finishes. The extension creates a wrapper such as:
 
-Version 0.4.2 adds **Choose sync.json** directly to the creator-folder controls. Choose the archive’s history file to reconnect it. Existing folder access is reused; otherwise, **Allow archive folder** opens at the selected file’s location and verifies that the chosen folder contains that exact file. Cancellation, a different creator’s history, or a wrong folder leaves the current job unchanged. New archives still use **Choose save location**.
-
-Version 0.4.1 fixes folder permission recovery. **Restore folder access** (or **Resume** after a permission error) opens the access tab. Click **Allow folder access** to confirm access with the download worker and resume automatically, retaining collected files. **Return to creator** brings back the original tab. Keep the access tab open until saving finishes: closing the last tab for an origin can revoke a temporary filesystem grant ([Chrome permission behavior](https://developer.chrome.com/blog/persistent-permissions-for-the-file-system-access-api)). Selecting the same folder again also preserves a paused download or pending sync.
-
-Version 0.4 stops rapid worker polling when idle, queries browser downloads directly by ID, and uses compact job summaries for recent history and maintenance. Progress reads stay responsive while a scan request is pending. The UI polls less frequently when idle, sends smaller progress responses, and retains unchanged post rows. **Storage & history** now lists individual temporary caches and offers optional cleanup after successful ZIP saving.
-
-## Posts
-
-Open a creator profile, such as `https://pawchive.pw/fanbox/user/4862787`, to discover every archived post. Open a post, such as `https://pawchive.pw/fanbox/user/4862787/post/12129865`, to select that post alone. The overlay fills in the creator, platform, and scope from the current address and starts discovery. A post page also offers **Entire creator profile**.
-
-Discovery uses one progress bar and a combined count such as **Discovered: 50/118 posts**. When no reliable total is available, it shows an animated bar until pagination finishes. Expand **Posts** to select individual posts. **Clear selection** starts with none; check the posts you want, or check **All posts** to save the entire discovered profile. The selection count and download button identify your scope. Selections persist with the job. Finish or cancel ongoing work before changing its selected posts.
-
-Posts save full resolution by default. **Save thumbnail if unavailable** is checked initially: it saves a preview only when the archive marks an original missing or its server returns HTTP 404/410. Fallback images go in `thumbnail`, are counted in the UI, and retain thumbnail identities in `sync.json` so later syncs can still download newly available originals. Uncheck it to report missing originals instead. Images, other files, and post text can be selected separately. Post text is written to `post.txt` in `full res`; other files never use thumbnail fallback.
-
-Expand **File types** after discovery to select individual extensions. **All types** and **Clear types** control the checklist. Types come from advertised filenames or storage paths; extensionless files appear as **Unknown**. Generated post text uses `.txt`. All types are selected by default, and types first encountered on a later sync are selected automatically. These choices apply to downloaded attachments and generated text; archive contents become known only after downloading, and extraction preserves all their files. Original formats unsupported by browser image decoding are saved as bytes.
-
-**Extract downloaded archives** is optional and off by default. ZIP, 7z, RAR4/RAR5, TAR, and gzip/bzip2/xz-compressed TAR files unpack into a sibling `filename.ext.extracted/` directory. A successful extraction saves its contents and removes the compressed source. Failed, encrypted, empty, or unsupported archives remain alongside any successfully extracted files, with an entry in `failures.json`; **Retry failures** can retry extraction. ZIP decoding streams to disk; the other decoder has a 512 MiB compressed-input limit. Each archive is limited to 10,000 regular files and 8 GiB of output. Links and unsafe or duplicate paths are rejected. Archives exceeding these limits remain compressed. Extraction runs one archive at a time in a worker while downloading can continue.
-
-Each new ZIP or creator folder includes `settings.json` with the content, quality, file-type exclusions and extraction settings. Connecting an existing folder restores it automatically. Older archives without this file use all file types and extraction off, retaining their earlier quality/content choices; the next sync generates `settings.json`. Sync checks every recorded extracted output: intact contents skip the compressed download, and missing outputs trigger recovery from that archive. Disabling extraction downloads a compressed source again when only its extracted contents remain.
-
-**Creator folder** is the default. Click **Choose save location** to open the folder chooser, then **Save to folder** (or **Save this post**). **Change folder** appears after connecting a folder. The extension creates a creator wrapper named `fanbox_CreatorId_CreatorName` or `patreon_CreatorId_CreatorName` inside that location. Quality folders and the JSON files stay inside this wrapper, with no ZIP or `ArchiveRoot` folder. Discovery and saving use the same compact progress area. Pause/resume, cancel, and retry are supported. Folder saving requires a Chromium browser with the File System Access API enabled.
-
-```text
-ChosenSaveLocation/fanbox_CreatorId_CreatorName/
-  thumbnail/
-    2026-01-28_PostId_PostTitle/
-      001_image.jpg
+~~~text
+fanbox_CreatorId_CreatorName/
   full res/
-    2026-01-28_PostId_PostTitle/
-      001_image.png
-      002_source.psd
+    2026-11-01_PostId_PostTitle/
+      001_image.jpg
+      002_clip.mp4
       post.txt
+  thumbnail/
   sync.json
-  failures.json
   settings.json
-```
+  failures.json
+  duplicates.json
+~~~
 
-New post folders use `YYYY-MM-DD_PostId_PostTitle`, with publication dates normalized to UTC; absent or invalid dates use `unknown-date`. Existing saved folders keep their original names during sync, and cached jobs retain their paths until a new download is started. Missing files without a successful fallback are recorded in `failures.json`. Rate limits and server/network failures retain bounded retries and never trigger thumbnail fallback. Stored attachment bytes are preserved, and decoded image formats determine image filename extensions. External embeds are recorded in selected post text rather than fetched from other websites.
+Post dates use UTC. Invalid/missing dates use **unknown-date**. Generated text contains the source URL and selected post content; external embeds are recorded rather than downloaded.
 
-## Sync an existing creator archive
+## Update an existing archive
 
-To collect only a few posts from the same creator:
+1. Extract an earlier ZIP if necessary.
+2. Open that creator or the next post you want to save.
+3. Choose **Creator folder → Choose sync.json** and select the history inside the existing creator folder. Allow that folder when requested. **Change folder** can connect the folder directly.
+4. Save your selected posts or choose **Sync folder** for an entire creator.
 
-1. On the creator profile, expand **Posts**, click **Clear selection**, and check the posts to save. Alternatively, open one post directly.
-2. Choose **ZIP file** and save the selected posts. Extract the ZIP so its creator folder contains `sync.json`, `full res`, and any thumbnails.
-3. Choose the next posts on the profile, or open another post from that creator. Choose **Creator folder → Choose sync.json**, select the extracted archive's history, and allow its folder. **Change folder** can connect that extracted creator folder directly too.
-4. Use **Save selected posts** or **Save this post**. Only those posts are checked and downloaded; earlier successful files and their history remain. Choosing archive history does not switch to the whole profile or select additional posts.
+Sync checks recorded paths and sizes, skips intact files, and recovers missing outputs. Importing history retains the current single-post/subset scope. Earlier successful history and unrelated files stay in place. An older post **manifest.json** is also accepted.
 
-For an entire creator sync, explicitly use the creator profile with **All posts** selected:
+| File | Purpose |
+| --- | --- |
+| sync.json | Successful file history and shared-output references used by folder sync |
+| settings.json | Creator-scoped content, file-type, archive and duplicate preferences |
+| failures.json | Missing media, extraction errors and discovery gaps; retry from the overlay |
+| duplicates.json | Repeated source paths and the retained file locations |
+| manifest.json | ZIP export metadata; new ZIPs include this alongside the portable sync history |
 
-1. Open the creator's Patreon or Fanbox profile and click the extension.
-2. Click **Choose sync.json**, then select the archive’s `sync.json` in the access tab. An older post `manifest.json` is also accepted. `failures.json` records failures and cannot identify successful downloads.
-3. If requested, click **Allow archive folder**. The picker opens at the file’s location; approve the folder containing it. An existing connection with write access skips this step. Keep the access tab open and use **Return to creator**.
-4. After discovery finishes, choose **Sync folder**. Existing successful files are checked by relative path and byte size; missing files, new posts, and newly selected quality/content types are downloaded into the same structure. Unrelated files are retained, and filename conflicts use a suffix.
+## Handle monthly recaps and duplicates
 
-Choosing a file grants access to that file; writing neighbouring media still needs folder access. The browser’s [`startIn` option](https://wicg.github.io/file-system-access/#starting-directory) lets the permission picker open in the chosen file’s parent folder. A copied JSON outside the archive cannot grant access to the original archive. Select the file inside the extracted archive; older layouts such as `ArchiveRoot/fanbox/CreatorId_CreatorName` remain supported. **More options → Import history only** remains available to import history separately before choosing a destination.
+**Avoid exact duplicates** defaults on for new jobs. Repeated attachment hashes download once per quality across selected posts. Text remains available for each post. Folder sync can reuse an identical attachment saved by an earlier post, including complete extracted-only archives.
 
-`sync.json` updates after successful writes and keeps earlier download history. Failed or unavailable files are not recorded as downloaded. You can also simply choose an existing creator folder: its `sync.json` or older `manifest.json` is detected automatically. Later **Sync folder** runs scan for new posts before saving when **All posts** is selected. Saving a subset or a single post keeps that scope. The JSON belongs to one website, creator, and platform; mismatches are rejected. Importing history does not expand the post scope. This does not sync a whole website.
+Enable **Extract downloaded archives** as well to compare files inside different bundles with loose media and earlier extracted contents. Only byte-identical files share a retained copy. Names, sizes, language suffixes and sampled fingerprints alone are insufficient. Different translations, edits and resolutions stay separate.
 
-ZIP remains available under **Save to → ZIP file** for separate exports. New post ZIPs use the same single `fanbox_CreatorId_CreatorName` or `patreon_CreatorId_CreatorName` wrapper without `ArchiveRoot`, and include `manifest.json`, `sync.json`, `settings.json`, and `failures.json`. Extract before syncing into a folder. Selecting an existing creator archive reuses that directory rather than nesting another wrapper inside it; older folder layouts remain usable.
+Different compressed archives still need their first download before their contents can be compared. To avoid an unwanted version's transfer entirely, uncheck it in **Archives & versions**. Earlier duplicate copies already on disk are preserved; the option governs new saves and syncs. Shared locations are recorded in the JSON files.
 
-Older saved post jobs also use this single creator wrapper when their ZIP is rebuilt or saved again. A cached ZIP with the old `ArchiveRoot/fanbox` or `ArchiveRoot/patreon` layout is repackaged from the collected files before saving. Attachment bytes and successful download history are retained.
+Extraction supports ZIP, 7z, RAR4/RAR5, TAR and gzip/bzip2/xz-compressed TAR. Successful extraction retains the contents and removes the compressed source only after saving recovery metadata and verifying retained outputs. Failed/encrypted/unsupported archives are kept and reported. Nested archives remain files rather than being recursively unpacked.
+
+Limits: 10,000 regular files and 8 GiB expanded output per archive. Non-ZIP decoders accept at most 512 MiB compressed input. Unsafe paths, links and duplicate sanitized paths are rejected.
 
 ## Discord
 
-Open a `/discord/server/{serverId}` or `/discord/server/{serverId}/{channelId}` URL. The overlay selects the server or current channel automatically. A channel page also offers **Entire Discord server**. Scanning uses the existing API pagination and visible-page recovery. Progress is summarized without channel-by-channel rows.
+Open a supported **/discord/server/ServerId** or **/discord/server/ServerId/ChannelId** page. The overlay selects the server/channel; a channel page can switch to the entire server. Discord defaults to thumbnails and a ZIP. Originals need an observed original URL; **Best available** can use surviving previews. Discord retains its separate archive layout.
 
-Thumbnails remain the default. Full resolution requires an observed original URL; **Best available** can fall back to previews. New Discord jobs save under `ArchiveRoot/discord`; existing jobs retain their previous paths. Downloading defaults to a single ZIP.
+## Progress, storage and troubleshooting
 
-## Local storage
+- **Pause / Resume** preserves completed transfers. **Retry failures** retries failed media, extraction and discovery gaps. Isolated missing records do not prevent saving available content.
+- **Restore folder access** reopens the access tab when the browser needs permission again. Allow the existing folder, then return to the creator.
+- A large transfer can keep the completed-file count unchanged; inspect its filename and received bytes. Transfers time out after 90 seconds without incoming data, rather than a fixed overall download duration.
+- Use **Scan again** for stale media URLs. Site access failures, rate limits or repeated bad API pages can pause discovery; check the site tab before retrying.
+- **Storage & history** lists temporary caches and jobs. Automatic cache cleanup defaults to five idle minutes; active jobs and paused downloads are protected. Removing a cache/job or clearing local extension data asks for confirmation and leaves downloaded ZIPs and chosen archive folders on disk.
 
-Jobs, imported sync history, folder handles, and scan cursors persist locally in IndexedDB. Images and arbitrary post files stream to private local extension storage. Folder downloads copy validated files to the chosen folder, then discard their temporary copies after saving the sync index. ZIP packaging reads staged files without collecting an entire archive in memory. There is no server component. Local free space limits the archive size; ZIP exports need temporary space for staged files plus the ZIP.
+Jobs, scan history and folder handles stay in extension-owned IndexedDB; temporary files use private browser storage. ZIP exports need space for staged files plus the output ZIP. There is no telemetry, account synchronization or server component. Extension requests omit cookies.
 
-Temporary ZIP data expires after **5 minutes without use**, with a check every minute while the browser runs and another check when the extension starts. Change the interval to **1–10 minutes**, or disable automatic cleanup, under **Storage & history**. Opening/rebuilding a ZIP or reading/writing staged files refreshes its idle timer; viewing progress alone does not. Active jobs, ZIP saves, and paused downloads are protected. Idle orphaned caches are cleaned too. Downloaded ZIPs, creator folders, sync JSON, and job discovery history are retained. After expiry, **Save ZIP again** disappears; downloading again prepares a new temporary ZIP. Browser sleep or a closed browser can delay a check until the extension runs again.
+[Pawchive Blocklist](https://github.com/NguyenHuuCuongK18/Pawchive-blocklist) can run alongside Ripper. Its hidden cards do not define the download scope: Ripper reads the API independently. Use Ripper's own post/archive selection.
 
-Download ticks query indexed active jobs and pending ZIP saves. When idle, the worker stops its fast timer and relies on commands and browser alarms to wake it. Browser download events query matching jobs/files by download ID instead of scanning all saved history, and unrelated download progress events are ignored. Recent history and maintenance use a compact summary store. The UI refreshes active progress every second and idle jobs every five seconds, pauses polling while hidden, and updates post rows only when their contents change.
+## Build and contribute
 
-Open **Storage & history** in the overlay to manage local data:
+Node.js 24 LTS is recommended; the supported ranges are in **package.json**.
 
-- **Temporary caches** lists cached ZIPs and staged files across Posts and Discord, including unused caches without a job. Each row shows its size, file count, and last-use time. Use **Refresh** to inspect storage again. **Remove** clears only that cache after confirmation. Active and paused jobs are protected; finish or cancel a job before removing its cache.
-- **Clear temporary data after a successful ZIP download** is optional and off by default. It removes staging files and the private ZIP copy only after Chrome confirms a complete download. Interrupted or cancelled saves retain their cache. Cleanup failures retain the successful download status and retry during maintenance; already completed caches are also eligible on the next check.
-- **Clear this ZIP cache** removes the current ZIP job's temporary files after confirmation. Successful jobs keep their saved status, counts, and history; another export needs to download the files again. Unsaved exports return to a state where they can be downloaded again.
-- **Remove this job** stops that job and removes its history and cached files. Its folder connection is forgotten when no other job uses it.
-- **Clear all extension data** stops all jobs across Posts and Discord, removes their history and imported sync history, forgets saved folder connections, and removes all temporary files, including orphaned caches.
+~~~sh
+npm ci
+npx playwright install chromium
+npm run check
+npm run release:check
+~~~
 
-Removing a cache, removing a job, or clearing all data requires confirmation in the overlay. Downloaded ZIPs, saved archive folders, and their `sync.json` files stay on disk. Clearing all data also resets cleanup preferences. After removing a job, **Scan this page** starts a new one; existing archives can be connected again through the folder chooser or sync import. A browser restart can resume retained jobs and file collection; interrupted final saves can be retried from retained caches.
+Load **dist/** after building. The complete release check includes seven isolated browser suites, packaging and byte-for-byte ZIP verification. The coexistence suite needs a sibling Blocklist checkout; setup and individual commands are in [development notes](docs/DEVELOPMENT.md).
 
-## Development
+**npm run package** produces the extension ZIP plus **releases/SHA256SUMS.txt**. **npm run release:verify** checks their contents, versions, checksums and bundled notices. **npm run clean** removes generated test output, browser profiles, old local packages and release output; it preserves source, dependencies and the built extension.
 
-Use Node.js 22.12+, 24, or 26+ in the supported even-numbered release ranges in `package.json`. Vitest 5 replaces vulnerable older test tooling; its requirements are documented in the [migration guide](https://vitest.dev/guide/migration/).
+See [architecture](docs/ARCHITECTURE.md), [download policy](docs/DOWNLOAD_POLICY.md), [release validation](docs/RELEASE_CHECK.md) and [fixture provenance](tests/fixtures/README.md).
 
-```powershell
-npm.cmd ci
-npm.cmd run check
-npm.cmd run test:browser
-npm.cmd run test:acceptance
-npm.cmd run test:selection
-npm.cmd run test:tolerance
-npm.cmd run test:settings
-npm.cmd run package
-npm.cmd run release:verify
-```
+## License
 
-`npm.cmd run release:check` runs the complete local release gate: unit tests, type checking, a fresh production build, all five controlled browser checks, ZIP packaging, and byte-for-byte package verification. Run `npm.cmd audit` separately when connected to the npm registry. The current release ZIP is named above; `dist`, dependency installs, profiles, and generated test outputs are ignored.
-
-`check` runs the existing unit suite, TypeScript checking, and the production build. The browser checks use isolated Chromium profiles, controlled API/media responses, real ZIP downloads, and actual directory writes through an OPFS directory handle replacing the native OS picker. They check legacy imports, incremental sync, missing-file recovery, creator/path validation, folder permission recovery, the selected-post ZIP-to-folder workflow, and tolerant discovery with ZIP/folder reports and gap retries. Profiles and downloaded test content are removed in cleanup blocks. Native OS dialogs still require a manual check. No whole live creator archive is downloaded for testing.
-
-See [architecture](docs/ARCHITECTURE.md), [post API notes](docs/POST_API.md), and [download policy](docs/DOWNLOAD_POLICY.md).
+Original code and generated assets are [MIT licensed](LICENSE). Bundled dependencies retain the licenses listed in [third-party notices](THIRD_PARTY_NOTICES.md); their notices are included in the extension ZIP. This software license does not license downloaded creator content.

@@ -2,6 +2,7 @@ import { relativePathParts } from '../../storage/folderWriter';
 import { parsePostUrl } from '../registry';
 import { isPostFolder } from './media';
 import { isPostId } from './postId';
+import { storedMediaPath } from '../../core/urlParser';
 export { validSelection } from './settings';
 import { validSelection } from './settings';
 import type { PostJob, PostScope, PostSelection, PostSyncFile, PostSyncIndex, PostTask } from './types';
@@ -18,7 +19,7 @@ function readFile(value: unknown, postId: string, legacy = false): PostSyncFile 
   const file = object(value);
   if (typeof file.id !== 'string' || file.id.length > 500 || !['thumbnail', 'full res'].includes(String(file.quality)) || !['image', 'file', 'text'].includes(String(file.kind)) || typeof file.path !== 'string' || file.path.length > 2000 || !Number.isSafeInteger(file.bytes) || (file.bytes as number) <= 0) throw new Error('Invalid downloaded file in sync JSON.');
   const id = syncKey(file.id);
-  if (!id.startsWith(`${postId}:${file.quality}:`) || (file.kind === 'text' ? id !== `${postId}:${file.quality}:text` : !/^\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{64}(?:\.[a-z0-9_-]{1,16})?$/i.test(id.slice(`${postId}:${file.quality}:`.length)))) throw new Error('Invalid downloaded file ID in sync JSON.');
+  if (!id.startsWith(`${postId}:${file.quality}:`) || (file.kind === 'text' ? id !== `${postId}:${file.quality}:text` : !storedMediaPath.test(id.slice(`${postId}:${file.quality}:`.length)))) throw new Error('Invalid downloaded file ID in sync JSON.');
   let path = file.path;
   if (legacy) {
     const parts = relativePathParts(path);
@@ -35,7 +36,13 @@ function readFile(value: unknown, postId: string, legacy = false): PostSyncFile 
       const entry = object(raw);
       if (typeof entry.id !== 'string' || !entry.id.startsWith(id + ':extract:') || !/^\d+$/.test(entry.id.slice((id + ':extract:').length)) || typeof entry.path !== 'string' || !entry.path.startsWith(path + '.extracted/') || !Number.isSafeInteger(entry.bytes) || (entry.bytes as number) < 0) throw new Error('Invalid extracted file history.');
       relativePathParts(entry.path);
-      return { id: entry.id, path: entry.path, bytes: entry.bytes as number };
+      let duplicateOf;
+      if (entry.duplicateOf !== undefined) {
+        const ref = object(entry.duplicateOf);
+        if (typeof ref.id !== 'string' || ref.id.length > 600 || typeof ref.path !== 'string' || ref.path.length > 2000 || relativePathParts(ref.path)[0] !== file.quality) throw new Error('Invalid duplicate file reference.');
+        duplicateOf = { id: ref.id, path: ref.path };
+      }
+      return { id: entry.id, path: entry.path, bytes: entry.bytes as number, ...(duplicateOf ? { duplicateOf } : {}) };
     });
     if (new Set(extracted.map(entry => entry.id)).size !== extracted.length || new Set(extracted.map(entry => entry.path)).size !== extracted.length) throw new Error('Duplicate extracted file history.');
   }
@@ -75,6 +82,15 @@ export function parseSync(input: unknown, scope: PostScope): PostSyncIndex {
     const parsed = files.map(file => readFile(file, post.id as string, legacy));
     if (new Set(parsed.map(file => file.id)).size !== parsed.length) throw new Error('Duplicate file ID in sync JSON.');
     if (parsed.length) index.posts.push({ id: post.id, title: String(post.title || `Post ${post.id}`).slice(0, 500), files: parsed });
+  }
+  const originals = new Map<string, { path: string; bytes: number }>();
+  for (const post of index.posts) for (const file of post.files) {
+    if (file.originalKept !== false) originals.set(file.id, file);
+    for (const entry of file.extracted || []) if (!entry.duplicateOf) originals.set(entry.id, entry);
+  }
+  for (const post of index.posts) for (const file of post.files) for (const entry of file.extracted || []) if (entry.duplicateOf) {
+    const kept = originals.get(syncKey(entry.duplicateOf.id));
+    if (!kept || kept.path !== entry.duplicateOf.path || kept.bytes !== entry.bytes || kept.path === entry.path) throw new Error('Duplicate reference must identify a retained file in this archive.');
   }
   return index;
 }
@@ -117,9 +133,10 @@ export function recordSaved(index: PostSyncIndex, task: PostTask, title: string)
 }
 export function zipSync(job: PostJob): PostSyncIndex {
   const index = emptySync(job);
+  const titles = new Map(job.posts.map(post => [post.id, post.title]));
   for (const task of job.tasks) {
     const parts = relativePathParts(task.path), quality = parts.findIndex(part => part === task.quality);
-    recordSaved(index, { ...task, path: parts.slice(quality).join('/') }, job.posts.find(post => post.id === task.postId)?.title || task.postId);
+    recordSaved(index, { ...task, path: parts.slice(quality).join('/') }, titles.get(task.postId) || task.postId);
   }
   return index;
 }

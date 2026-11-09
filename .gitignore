@@ -8,3 +8,11 @@ coverage/
 .service-check-*/
 .media-check-*/
 .selection-check-*/
+/releases/
+/*.zip
+.kilo/
+.compat-blocklist/
+.DS_Store
+Thumbs.db
+.env
+.env.*

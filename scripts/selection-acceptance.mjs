@@ -8,7 +8,7 @@ const root = resolve('.'), output = resolve(`.selection-check-${Date.now()}`);
 assert(output.startsWith(root + sep) && output.includes('.selection-check-'));
 await mkdir(output);
 const fixture = JSON.parse(await readFile('tests/fixtures/post-11312487.sanitized.json', 'utf8'));
-const image = await readFile('tests/fixtures/bird_01.thumbnail.png');
+const image = await readFile('tests/fixtures/test-image.jpg');
 const profileUrl = `https://pawchive.pw/fanbox/user/${fixture.user}`;
 const posts = ['1', '2', '3'].map((id, i) => ({ ...fixture, id, title: `Selected post ${id}`, content: `<p>Text for post ${id}</p>`,
   file: { name: `image-${id}.png`, path: `/${'abc'[i].repeat(2)}/${'abc'[i].repeat(2)}/${'abc'[i].repeat(64)}.png` } }));

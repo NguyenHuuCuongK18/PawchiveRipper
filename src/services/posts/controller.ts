@@ -3,22 +3,24 @@ import { offscreen, release } from '../../background/offscreenBridge';
 import { safeSegment } from '../../core/filenameBuilder';
 import { parsePostUrl, postSourceUrl } from '../registry';
 import { PostClient } from './client';
-import { createTasks, postZipJob, thumbnailFallback } from './media';
+import { createTasks, POST_MEDIA_VERSION, postZipJob, thumbnailFallback } from './media';
 import { canSkipPostError, discoverPosts, retryPostFailures, skipPostError } from './discovery';
 import { assertSyncSource, emptySync, mergeSync, parseSync, recordSaved, validSelection } from './sync';
-import type { ExtractedFile, PostCommand, PostExtraction, PostJob, PostSyncIndex, PostTransferProgress } from './types';
+import type { ExtractedFile, PostCommand, PostExtraction, PostJob, PostSyncIndex, PostTask, PostTransferProgress } from './types';
 import { cleanupSuccessfulZip, removeJobCache } from '../cacheMaintenance';
 import { transferFailed, transferLimit, transferSucceeded } from '../../core/transferConcurrency';
 import { changePostSelection, selectedPosts } from './selection';
 import { detectedFileTypes } from './fileTypes';
 import { defaultSelection } from './settings';
+import { duplicateReport, planDuplicates } from './duplicates';
+import { isArchive } from './fileTypes';
 
 const client = new PostClient();
 const delay = (attempt: number, retryAfter = 0) => Math.max(retryAfter, 2000 * 2 ** Math.max(0, attempt - 1));
 async function requireJob(id: string): Promise<PostJob> { const job = await getPostJob(id); if (!job) throw new Error('Post archive was not found.'); return job; }
 function resetScan(job: PostJob): void {
-  job.posts = []; job.detailQueue = []; job.tasks = []; job.status = 'scanning'; job.resumeStatus = 'scanning';
-  job.scan = { offset: 0, pages: 0, total: job.source.postId ? 1 : null, complete: false, error: null, attempts: 0, nextAt: 0, fingerprints: [] };
+  job.posts = []; job.detailQueue = []; job.tasks = []; job.duplicates = []; job.status = 'scanning'; job.resumeStatus = 'scanning';
+  job.scan = { offset: 0, pages: 0, total: job.source.postId ? 1 : null, complete: false, error: null, attempts: 0, nextAt: 0, fingerprints: [], mediaVersion: POST_MEDIA_VERSION };
   job.nextAt = 0; job.error = null; job.archive = undefined; job.autoDownload = undefined;
 }
 async function startAutomaticDownload(job: PostJob): Promise<void> {
@@ -42,7 +44,7 @@ export async function pausePosts(): Promise<void> {
   }
 }
 export function postDetail(job: PostJob, limit = 100) {
-  const { posts, tasks, sync, detailQueue, selectedPostIds, ...summary } = job;
+  const { posts, tasks, sync, detailQueue, selectedPostIds, duplicates: _duplicates, ...summary } = job;
   const { fingerprints: _fingerprints, failures: _failures, retryQueue: _retryQueue, ...scan } = summary.scan;
   const syncedPosts = new Set(sync?.posts.map(post => post.id));
   const selectedIds = selectedPostIds === undefined ? undefined : new Set(selectedPostIds);
@@ -75,7 +77,9 @@ export function postDetail(job: PostJob, limit = 100) {
   const activeTransfers = tasks.filter(task => task.status === 'transferring').slice(0, 8).map(task => ({ name: task.path.split('/').at(-1)!, progress: task.progress }));
   const queued = tasks.filter(task => task.status === 'queued');
   const retryAt = queued.length ? Math.max(job.nextAt, Math.min(...queued.map(task => task.nextAt))) : 0;
-  return { job: { ...summary, scan }, originalOrigins: [...origins], totals, fileTypes: detectedFileTypes(job), activeTransfers, retryAt, canSkipError: canSkipPostError(job), allPostsSelected: selectedPostIds === undefined,
+  const archives = selectedPosts(job).flatMap(post => post.media.filter(media => isArchive(media.name) || isArchive(media.path)).map(media => ({ id: `${post.id}:${media.path}`, postId: post.id, title: post.title, name: media.name })));
+  const duplicateSummary = duplicateReport(job).filter(item => item.status === 'saved');
+  return { job: { ...summary, scan }, archives, duplicates: duplicateSummary.length, duplicateBytes: duplicateSummary.reduce((sum, item) => sum + (item.bytes || 0), 0), needsMediaRescan: job.scan.mediaVersion !== POST_MEDIA_VERSION, originalOrigins: [...origins], totals, fileTypes: detectedFileTypes(job), activeTransfers, retryAt, canSkipError: canSkipPostError(job), allPostsSelected: selectedPostIds === undefined,
     posts: posts.slice(0, Math.min(1000, Math.max(1, limit))).map(post => ({ id: post.id, title: post.title, files: post.media.length, hasFull: post.hasFull, selected: !selectedIds || selectedIds.has(post.id) })) };
 }
 async function saveZip(job: PostJob): Promise<void> {
@@ -107,7 +111,7 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
       id: crypto.randomUUID(), service: 'posts', source, sourceUrl: postSourceUrl(source), creatorName: source.creatorId,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'scanning', resumeStatus: 'scanning',
       selection: defaultSelection(),
-      scan: { offset: 0, pages: 0, total: source.postId ? 1 : Number.isSafeInteger(message.expectedPosts) && message.expectedPosts! > 0 ? message.expectedPosts! : null, complete: false, error: null, attempts: 0, nextAt: 0, fingerprints: [] },
+      scan: { offset: 0, pages: 0, total: source.postId ? 1 : Number.isSafeInteger(message.expectedPosts) && message.expectedPosts! > 0 ? message.expectedPosts! : null, complete: false, error: null, attempts: 0, nextAt: 0, fingerprints: [], mediaVersion: POST_MEDIA_VERSION },
       posts: [], detailQueue: [], tasks: [], archive: undefined, destination: { kind: 'folder', directoryId: '', name: '' }, nextAt: 0, error: null,
     };
     const metadata = await Promise.allSettled([client.profile(source), job.scan.total === null ? client.total(source) : Promise.resolve(job.scan.total)]);
@@ -163,21 +167,27 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     if (destination === 'zip') job.destination = { kind: 'zip' };
     job.autoDownload = undefined;
     const previous = new Map(job.tasks.map(task => [task.id, task]));
-    job.tasks = createTasks(job, selection);
+    const planned = planDuplicates(createTasks(job, selection), !!selection.deduplicate);
+    job.tasks = planned.tasks; job.duplicates = planned.duplicates; job.selection = selection;
     if (!job.tasks.length && !reportOnly) throw new Error('Choose at least one available content type.');
     for (const task of job.tasks) {
       const old = previous.get(task.id);
       if (old && ['staged', 'downloaded'].includes(old.status) && await offscreen('post-cached', { jobId: job.id, task: old })) {
         Object.assign(task, { status: 'staged', bytes: old.bytes });
-        if (destination === 'zip' && task.extraction && old.extraction?.state === 'done') task.extraction = old.extraction;
+        if (destination === 'zip' && task.extraction && old.extraction?.state === 'done' && (selection.deduplicate || !old.extraction.files.some(file => file.duplicateOf))) task.extraction = old.extraction;
         if (task.kind === 'image') task.path = task.path.replace(/\.[^/.]+$/, old.path.slice(old.path.lastIndexOf('.')));
       }
     }
     if (destination === 'folder') {
-      const checked = await offscreen<{ sync?: PostSyncIndex; files: { id: string; path: string; bytes: number; extraction?: PostExtraction }[] }>('post-folder-check', { postJob: job });
+      const checked = await offscreen<{ sync?: PostSyncIndex; files: { id: string; path: string; bytes: number; extraction?: PostExtraction }[]; duplicates?: PostJob['duplicates'] }>('post-folder-check', { postJob: job });
       job.sync = checked.sync || emptySync(job);
       const saved = new Map(checked.files.map(file => [file.id, file]));
       for (const task of job.tasks) { const file = saved.get(task.id); if (file) Object.assign(task, file, { status: 'downloaded', synced: true, error: null }); if (task.fallback) task.fallbackChecked = true; }
+      for (const duplicate of checked.duplicates || []) {
+        const removed = job.tasks.find(task => task.postId === duplicate.postId && task.path === duplicate.path); if (!removed) continue;
+        for (const alias of job.duplicates) if (alias.keptTaskId === removed.id) Object.assign(alias, { duplicateOf: duplicate.duplicateOf, keptTaskId: duplicate.keptTaskId, existing: true, bytes: duplicate.bytes, retainedPaths: duplicate.retainedPaths });
+        job.tasks = job.tasks.filter(task => task !== removed); job.duplicates.push(duplicate);
+      }
       job.sync.selection = selection;
     }
     job.selection = selection; job.status = 'downloading'; job.resumeStatus = 'downloading'; job.error = null;
@@ -256,6 +266,8 @@ async function reconcileTasks(job: PostJob): Promise<void> {
       if (task.kind !== 'text') transferFailed(job, 'posts', result?.status, result?.retryAfterMs);
       // Only a missing original triggers fallback. Rate limits and other errors keep their retry policy.
       if (result?.status === 404 || result?.status === 410) {
+        const alternate = task.alternateUrls?.shift();
+        if (alternate) { task.url = alternate; task.status = 'queued'; task.attempts = 0; task.nextAt = 0; task.error = null; completed.push(recordId); changed = true; continue; }
         const fallback = thumbnailFallback(task, task.error);
         if (fallback) Object.assign(task, fallback);
       }
@@ -271,6 +283,7 @@ async function reconcileExtractions(job: PostJob): Promise<void> {
     const result = await offscreen<PostExtraction | null>('post-extract-status', { jobId: job.id, recordId: task.id });
     if (result?.state === 'extracting') continue;
     if (!result) { task.extraction = { state: 'pending', files: [] }; await savePostJob(job); continue; }
+    if (job.selection.deduplicate && result.files.length) result.files = await offscreen<ExtractedFile[]>('post-extract-deduplicate', { postJob: job, recordId: task.id });
     if (job.destination?.kind === 'folder') {
       result.files = await offscreen<ExtractedFile[]>('post-extract-commit', { postJob: job, recordId: task.id });
       job.sync ||= emptySync(job); task.extraction = result;
@@ -284,6 +297,8 @@ async function reconcileExtractions(job: PostJob): Promise<void> {
     task.extraction.originalRemoved = true; await savePostJob(job);
   }
   if (job.tasks.some(task => task.extraction?.state === 'extracting')) return;
+  // Compare archive entries against loose media only after those transfers have settled.
+  if (job.selection.deduplicate && job.tasks.some(task => task.kind !== 'text' && !task.extraction && ['queued', 'transferring'].includes(task.status))) return;
   const next = job.tasks.find(task => task.extraction?.state === 'pending' && ['staged', 'downloaded'].includes(task.status));
   if (next) {
     next.extraction = { state: 'extracting', files: [] }; await savePostJob(job);
@@ -342,9 +357,13 @@ export async function tickPosts(): Promise<boolean> {
     const limit = transferLimit(job, 'posts');
     // Reconciliation may have just received a 429; honor its new deadline now.
     // Let short text/image work fill and grow the pool before large source archives occupy every slot.
-    const priority = { text: 0, image: 1, file: 2 };
-    const next = Date.now() >= Math.max(notBefore, job.nextAt) ? job.tasks.filter(task => task.status === 'queued' && task.nextAt <= Date.now())
-      .sort((a, b) => priority[a.kind] - priority[b.kind]).slice(0, Math.max(0, limit - active)) : [];
+    const slots = Math.max(0, limit - active), now = Date.now();
+    const buckets: Record<PostTask['kind'], PostTask[]> = { text: [], image: [], file: [] };
+    if (slots && now >= Math.max(notBefore, job.nextAt)) for (const task of job.tasks) {
+      if (task.status === 'queued' && task.nextAt <= now && buckets[task.kind].length < slots) buckets[task.kind].push(task);
+      if (buckets.text.length === slots) break;
+    }
+    const next = [...buckets.text, ...buckets.image, ...buckets.file].slice(0, slots);
     if (next.length) {
       for (const task of next) { task.status = 'transferring'; task.attempts++; task.progress = { receivedBytes: 0, totalBytes: null, phase: 'connecting', updatedAt: Date.now() }; }
       job.nextAt = Date.now() + 400; await savePostJob(job);

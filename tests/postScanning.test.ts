@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../src/background/offscreenBridge', () => ({ offscreen: vi.fn(), release: vi.fn() }));
-import { postCommand, tickPosts } from '../src/services/posts/controller';
+import { postCommand, postDetail, tickPosts } from '../src/services/posts/controller';
 import { normalizePost } from '../src/services/posts/media';
 import { deleteLocalRecords, getPostJob, savePostJob } from '../src/storage/database';
 import type { ApiPost, PostJob, PostScope } from '../src/services/posts/types';
@@ -21,6 +21,18 @@ function pausedScan(): PostJob {
 
 beforeEach(async () => { await deleteLocalRecords(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+it('flags legacy scans and refreshes their media while preserving destination, selection and sync history', async () => {
+  const job = pausedScan(); job.status = 'finished'; job.scan.complete = true;
+  job.selectedPostIds = [post.id]; job.selection = { quality: 'full res', images: true, files: true, text: false };
+  job.destination = { kind: 'folder', directoryId: 'saved-folder', name: 'Existing archive' };
+  job.sync = { format: 'archive-ripper-post-sync', version: 1, source, creatorName: job.creatorName, updatedAt: '', selection: job.selection, posts: [] };
+  expect(postDetail(job).needsMediaRescan).toBe(true);
+  await savePostJob(job); await postCommand({ type: 'POST_ACTION', jobId: job.id, action: 'rescan' });
+  const stored = (await getPostJob(job.id))!;
+  expect(postDetail(stored).needsMediaRescan).toBe(false);
+  expect(stored).toMatchObject({ status: 'scanning', posts: [], tasks: [], selectedPostIds: job.selectedPostIds, selection: job.selection, destination: job.destination, sync: job.sync });
+});
 
 it.each(['resume', 'retry'] as const)('%s continues an existing failed scan at offset 450 and keeps its earlier posts', async action => {
   vi.useFakeTimers({ toFake: ['Date'] });

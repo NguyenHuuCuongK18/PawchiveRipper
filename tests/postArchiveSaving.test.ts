@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ requireDirectory: vi.fn(), stagedFile: vi.fn(), createArchive: vi.fn() }));
 vi.mock('../src/storage/destination', async original => ({ ...await original<typeof import('../src/storage/destination')>(), requireDirectory: mocks.requireDirectory }));
 vi.mock('../src/storage/zipCache', () => ({ stagedFile: mocks.stagedFile, createArchive: mocks.createArchive, removeStagedFile: vi.fn() }));
-import { checkFolder, folderSync, writePostIndex } from '../src/services/posts/folder';
+import { checkFolder, folderSync, writePostFile, writePostIndex } from '../src/services/posts/folder';
+import { createTasks, normalizePost } from '../src/services/posts/media';
 import { removeExtractedArchive } from '../src/services/posts/extraction';
 import { buildPostZip } from '../src/services/posts/zip';
 import { emptySync, recordSaved } from '../src/services/posts/sync';
@@ -10,11 +11,16 @@ import { archiveSettings, defaultSelection } from '../src/services/posts/setting
 import type { PostJob, PostTask } from '../src/services/posts/types';
 
 const files = new Map<string, Blob>(), events: string[] = [];
+const rejectedNames = new Set<string>();
 let failIndex = false;
 function directory(prefix = ''): FileSystemDirectoryHandle {
   return {
-    getDirectoryHandle: async (name: string) => directory(prefix + name + '/'),
+    getDirectoryHandle: async (name: string) => {
+      if (rejectedNames.has(name)) throw new TypeError("Failed to execute 'getDirectoryHandle' on 'FileSystemDirectoryHandle': Name is not allowed.");
+      return directory(prefix + name + '/');
+    },
     getFileHandle: async (name: string, options?: { create?: boolean }) => {
+      if (rejectedNames.has(name)) throw new TypeError("Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': Name is not allowed.");
       const path = prefix + name;
       if (!options?.create && !files.has(path)) throw new DOMException('Missing', 'NotFoundError');
       return { getFile: async () => files.get(path), createWritable: async () => {
@@ -38,8 +44,46 @@ function job(): PostJob {
   return value;
 }
 const json = (value: unknown) => new Blob([JSON.stringify(value)]);
-beforeEach(() => { files.clear(); events.length = 0; failIndex = false; vi.resetAllMocks(); mocks.requireDirectory.mockResolvedValue(directory()); });
+beforeEach(() => { files.clear(); rejectedNames.clear(); events.length = 0; failIndex = false; vi.resetAllMocks(); mocks.requireDirectory.mockResolvedValue(directory()); });
 describe('settings migration and extracted archive saving', () => {
+  it.each(['folder', 'file'])('recovers a rejected legacy %s name without aborting sync or losing other saved files', async rejected => {
+    const value = job();
+    value.selection = { ...defaultSelection(), images: false, files: false, text: true };
+    value.posts = ['100', '101'].map(id => normalizePost({ id, user: value.source.creatorId, service: value.source.platform, title: id === '100' ? '🐈\u200d⬛👓' : 'Saved post', published: '2024-11-03T00:00:00' }, value.source));
+    value.tasks = createTasks(value, value.selection);
+    value.sync = emptySync(value);
+    const legacyPath = rejected === 'folder' ? value.tasks[0].path.replace('🐈_⬛👓', '🐈\u200d⬛👓') : value.tasks[0].path.replace('post.txt', 'po\u200dst.txt');
+    rejectedNames.add(legacyPath.split('/')[rejected === 'folder' ? 1 : 2]);
+    for (const [index, task] of value.tasks.entries()) {
+      const saved = { ...task, path: index === 0 ? legacyPath : task.path, status: 'downloaded' as const, bytes: 7 };
+      files.set(saved.path, new Blob(['content'])); recordSaved(value.sync, saved, 'Title');
+    }
+    files.set('sync.json', json(value.sync));
+    const checked = await checkFolder(value);
+    expect(checked.files.map(file => file.id)).toEqual([value.tasks[1].id]);
+    expect(checked.sync!.posts[0].files[0].path).toBe(legacyPath);
+    expect(value.tasks[0].path).not.toBe(legacyPath);
+    expect(value.tasks[0].status).toBe('queued');
+
+    value.sync = checked.sync;
+    const task = value.tasks[0]; task.status = 'staged'; task.bytes = 7;
+    mocks.stagedFile.mockResolvedValue(new Blob(['content']));
+    Object.assign(task, await writePostFile(value, task.id), { status: 'downloaded' });
+    recordSaved(value.sync!, task, value.posts[0].title);
+    await writePostIndex(value);
+    expect((await checkFolder(value)).files).toHaveLength(2);
+    expect(JSON.parse(await files.get('sync.json')!.text()).posts[0].files[0].path).toBe(task.path);
+    expect(files.has(legacyPath)).toBe(true);
+    expect(events.some(event => event.startsWith('remove:'))).toBe(false);
+  });
+  it('still reports permission and unrelated lookup errors while checking saved paths', async () => {
+    const value = job(); files.set('sync.json', json(value.sync));
+    const folder = directory();
+    for (const error of [new DOMException('Permission denied', 'NotAllowedError'), new TypeError('Unexpected lookup failure')]) {
+      mocks.requireDirectory.mockResolvedValue({ ...folder, getDirectoryHandle: vi.fn().mockRejectedValue(error) });
+      await expect(checkFolder(value)).rejects.toBe(error);
+    }
+  });
   it('reads old history with default type/extraction settings and creates settings.json at the next save', async () => {
     const value = job(); files.set('sync.json', json(value.sync));
     expect((await folderSync('folder', value))!.selection).toMatchObject({ excludedFileTypes: [], extractArchives: false });

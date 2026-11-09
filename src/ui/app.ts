@@ -13,11 +13,12 @@ type PostView = ReturnType<typeof import('../services/posts/controller').postDet
 type DiscordView = { job: Omit<Job, 'channels'> & { channels: (Job['channels'][number] & { messageCount?: number })[] }; originalOrigins: string[]; hasDiscordCdn: boolean; totals: Summary };
 type Recent = { id: string; service: 'posts' | 'discord'; sourceUrl: string; title: string; status: string };
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <header><div><strong>Archive Ripper</strong><span class="local">Saved on your device</span></div><button id="close" class="icon" aria-label="Close">×</button></header>
+  <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12h20v15H6zM4 6h24v6H4zM12 17h8M16 17v6m-3-3 3 3 3-3"/></svg></span><div><strong>Pawchive Ripper</strong><span class="local">Saved on your device · v${chrome.runtime.getManifest().version}</span></div></div><button id="close" class="icon" aria-label="Close">×</button></header>
   <main>
     <nav aria-label="Saving service"><span id="posts-service">Posts</span><span id="discord-service">Discord</span></nav>
     <section class="target"><h1 id="title">Reading this page…</h1><p id="subtitle" class="muted"></p><label for="scope" class="sr-only">What to save</label><select id="scope" hidden></select></section>
     <p id="notice" class="notice" role="status" hidden></p>
+    <div id="media-refresh" class="notice" hidden><p>This job used an older media scanner. Refresh it to detect images and videos that may have been missed.</p><button id="refresh-media" type="button">Refresh scan</button></div>
     <button id="scan-new" class="primary full" hidden>Scan this page</button>
     <section id="work" hidden>
       <div class="progress-heading"><span id="progress-label">Discovering posts</span><strong id="percent">0%</strong></div>
@@ -27,6 +28,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label id="fallback-option" class="fallback-option" hidden><input id="fallback" type="checkbox" checked>Save thumbnail if unavailable</label><p id="quality-note" class="small muted"></p>
         <details id="file-types" hidden><summary>File types</summary><div class="actions"><button id="all-file-types" type="button">All types</button><button id="clear-file-types" type="button">Clear types</button></div><div id="file-type-options" class="content-types"></div></details>
         <label id="extract-option" class="fallback-option" hidden><input id="extract-archives" type="checkbox">Extract downloaded archives (ZIP, 7z, RAR, TAR)</label><p id="extract-note" class="small muted" hidden>Successful extraction keeps only the unpacked contents. If extraction fails, the compressed file is kept.</p>
+        <label id="duplicate-option" class="fallback-option" hidden><input id="deduplicate" type="checkbox" checked>Avoid exact duplicates</label><p id="duplicate-note" class="small muted" hidden>Download identical attachments once. With extraction enabled, byte-identical contents share one saved copy. Different edits and translations are kept. See duplicates.json for shared file locations.</p>
+        <details id="archive-choices" hidden><summary>Archives &amp; versions</summary><p class="small muted">Choose ZIPs and other archives before downloading. Similar names can contain different translations or edits.</p><input id="archive-search" type="search" placeholder="Find an archive or post" aria-label="Find an archive or post"><div class="actions"><button id="all-archives" type="button">Select all archives</button><button id="clear-archives" type="button">Clear archives</button></div><p id="archive-count" class="small muted"></p><div id="archive-rows" class="archive-list"></div></details>
         <div id="post-storage" hidden><div id="destination-label" class="small">Save to</div><div id="destination" class="destination-switch" role="radiogroup" aria-labelledby="destination-label" aria-describedby="folder-note"><label><input id="destination-folder" type="radio" name="destination" value="folder" checked><span>Creator folder</span></label><label><input id="destination-zip" type="radio" name="destination" value="zip"><span>ZIP file</span></label></div><div class="actions"><button id="choose-sync" type="button">Choose sync.json</button><button id="choose-folder" type="button">Change folder</button></div><p id="folder-note" class="small muted">Choose where to save this creator.</p></div>
       </fieldset>
       <button id="download" class="primary full" disabled>Download ZIP</button>
@@ -55,6 +58,7 @@ let cacheData: CacheList = { caches: [], bytes: 0 }, cacheLimit = 50;
 let cacheRequest: Promise<void> | null = null, postRowsKey = '';
 let postErrorNotice = '';
 let excludedFileTypes = new Set<string>(), fileTypesKey = '';
+let excludedAttachmentIds = new Set<string>(), archiveRowsKey = '';
 async function send<T>(message: ServiceCommand): Promise<T> {
   const reply: Reply<T> = await chrome.runtime.sendMessage(message);
   if (!reply?.ok) throw new Error(reply?.error || 'The archive service did not respond.'); return reply.data;
@@ -73,7 +77,30 @@ function progress(label: string, value: number | null, count: string): void {
   else { bar.value = Math.max(0, Math.min(100, value)); el('percent').textContent = `${Math.floor(bar.value)}%`; }
   el('count').textContent = count;
 }
-function selection(): PostSelection { return { quality: 'full res', fallbackToThumbnail: check('fallback').checked && check('images').checked, images: check('images').checked, files: check('files').checked, text: check('text').checked, excludedFileTypes: [...excludedFileTypes].sort(), extractArchives: check('extract-archives').checked }; }
+function selection(): PostSelection { return { quality: 'full res', fallbackToThumbnail: check('fallback').checked && check('images').checked, images: check('images').checked, files: check('files').checked, text: check('text').checked, excludedFileTypes: [...excludedFileTypes].sort(), extractArchives: check('extract-archives').checked, deduplicate: check('deduplicate').checked, excludedAttachmentIds: [...excludedAttachmentIds].sort() }; }
+function renderArchiveChoices(view: PostView): void {
+  const query = check('archive-search').value.trim().toLowerCase();
+  const key = JSON.stringify([view.archives, query]);
+  if (key !== archiveRowsKey) {
+    archiveRowsKey = key;
+    el('archive-rows').replaceChildren(...view.archives.filter(item => `${item.name} ${item.title} ${item.postId}`.toLowerCase().includes(query)).map(item => {
+      const label = document.createElement('label'), input = document.createElement('input'), text = document.createElement('span'), name = document.createElement('strong'), source = document.createElement('small');
+      input.type = 'checkbox'; input.dataset.attachmentId = item.id;
+      name.textContent = item.name; source.textContent = `${item.title} · Post ${item.postId}`;
+      text.append(name, source); label.append(input, text); return label;
+    }));
+  }
+  el('archive-count').textContent = `${view.archives.filter(item => !excludedAttachmentIds.has(item.id)).length}/${view.archives.length} archives selected`;
+  for (const input of el('archive-rows').querySelectorAll<HTMLInputElement>('input')) input.checked = !excludedAttachmentIds.has(input.dataset.attachmentId!);
+}
+el('archive-rows').onchange = event => {
+  const input = event.target as HTMLInputElement, id = input.dataset.attachmentId; if (!id) return;
+  if (input.checked) excludedAttachmentIds.delete(id); else excludedAttachmentIds.add(id);
+  if (post) renderArchiveChoices(post);
+};
+check('archive-search').oninput = () => { if (post) renderArchiveChoices(post); };
+el('all-archives').onclick = () => { for (const item of post?.archives || []) excludedAttachmentIds.delete(item.id); if (post) renderArchiveChoices(post); };
+el('clear-archives').onclick = () => { for (const item of post?.archives || []) excludedAttachmentIds.add(item.id); if (post) renderArchiveChoices(post); };
 function renderFileTypes(view: PostView): void {
   const key = JSON.stringify([view.fileTypes, [...excludedFileTypes].sort()]); if (key === fileTypesKey) return; fileTypesKey = key;
   el('file-type-options').replaceChildren(...view.fileTypes.map(({ type, count }) => {
@@ -92,6 +119,8 @@ function options(): void {
   const thumbnail = select('quality').value === 'thumbnail';
   el('types').hidden = service !== 'posts'; el('files-option').hidden = service !== 'posts' || !post?.totals.files;
   el('file-types').hidden = service !== 'posts'; el('extract-option').hidden = service !== 'posts'; el('extract-note').hidden = service !== 'posts';
+  el('duplicate-option').hidden = el('duplicate-note').hidden = service !== 'posts';
+  el('archive-choices').hidden = service !== 'posts' || !post?.archives.length;
   el('images-option').hidden = service === 'posts' && !post?.totals.images;
   el('quality-controls').hidden = service === 'posts'; el('best-quality').hidden = service !== 'discord';
   el('fallback-option').hidden = service !== 'posts' || !post?.totals.images;
@@ -211,6 +240,7 @@ el('scan-new').onclick = () => void run(start);
 function resetView(): void {
   selected = null; post = null; discord = null; optionsJob = null; limit = 100;
   el('work').hidden = true; el('scan-new').hidden = !service;
+  el('media-refresh').hidden = true;
   el('clear-job').hidden = true; el('clear-cache').hidden = true;
   if (context && service) {
     const scope = parsePostUrl(context.url), archive = parseArchiveUrl(context.url);
@@ -248,7 +278,8 @@ select('scope').onchange = () => void run(async () => {
   else { const parsed = parseArchiveUrl(context.url)!; sourceUrl = `${new URL(context.url).origin}/discord/server/${parsed.serverId}${select('scope').value === 'channel' ? '/' + parsed.channelId : ''}`; }
   await start();
 });
-el('rescan').onclick = () => void run(async () => { if (service === 'posts' && selected) await send({ type: 'POST_ACTION', jobId: selected, action: 'rescan' }); else await start(); });
+const rescan = () => void run(async () => { if (service === 'posts' && selected) await send({ type: 'POST_ACTION', jobId: selected, action: 'rescan' }); else await start(); });
+el('rescan').onclick = el('refresh-media').onclick = rescan;
 el('download').onclick = () => {
   if (service === 'posts' && destination() === 'folder' && (post?.job.destination?.kind !== 'folder' || !post.job.destination.directoryId)) { void run(chooseFolder); return; }
   // Original-host access must begin within the button's user gesture.
@@ -300,6 +331,7 @@ function downloadProgress(archive: Job['archive'], saved: number, processed: num
   progress(label, value, `${archive?.state === 'saved' ? 'Saved' : 'Collected'}: ${saved}/${total} files${failed ? ` · ${failed} unavailable` : ''}`);
 }
 function renderPost(view: PostView): void {
+  el('media-refresh').hidden = !view.needsMediaRescan || ['scanning', 'downloading'].includes(view.job.status) || view.job.archive?.state === 'saving';
   const { job, totals } = view;
   const transferText = job.status === 'downloading' ? view.activeTransfers.slice(0, 3).map(({ name, progress }) => {
     if (!progress || progress.phase === 'connecting') return `Connecting: ${name}`;
@@ -311,13 +343,15 @@ function renderPost(view: PostView): void {
   el('title').textContent = job.source.postId ? view.posts[0]?.title || 'This post' : job.creatorName;
   el('subtitle').textContent = `${job.source.platform === 'fanbox' ? 'Pixiv Fanbox' : 'Patreon'} · ${job.source.postId ? job.creatorName : 'Entire profile'}`;
   const optionsKey = job.id + (job.destination?.kind === 'folder' ? job.destination.directoryId : 'zip') + JSON.stringify(job.selection);
-  if (optionsJob !== optionsKey) { optionsJob = optionsKey; check('fallback').checked = job.selection.fallbackToThumbnail ?? true; check('images').checked = job.selection.images; check('files').checked = job.selection.files; check('text').checked = job.selection.text; check('extract-archives').checked = job.selection.extractArchives ?? false; excludedFileTypes = new Set(job.selection.excludedFileTypes || []); setDestination(job.destination?.kind || 'zip'); }
-  renderFileTypes(view);
+  if (optionsJob !== optionsKey) { optionsJob = optionsKey; check('fallback').checked = job.selection.fallbackToThumbnail ?? true; check('images').checked = job.selection.images; check('files').checked = job.selection.files; check('text').checked = job.selection.text; check('extract-archives').checked = job.selection.extractArchives ?? false; excludedFileTypes = new Set(job.selection.excludedFileTypes || []); check('deduplicate').checked = job.selection.deduplicate ?? true; excludedAttachmentIds = new Set(job.selection.excludedAttachmentIds || []); setDestination(job.destination?.kind || 'zip'); }
+  renderFileTypes(view); renderArchiveChoices(view);
   if (!job.scan.complete) progress(job.status === 'paused' ? 'Discovery paused' : job.status === 'cancelled' ? 'Discovery cancelled' : 'Discovering posts', totals.total ? Math.min(99, totals.discovered / totals.total * 100) : null, `Discovered: ${totals.discovered}/${totals.total ?? '…'} posts`);
   else if (job.archive) downloadProgress(job.archive, totals.saved, totals.processed, totals.selected, totals.failed);
   else if (totals.selected) progress(job.status === 'finished' ? 'Saved' : job.status === 'paused' ? 'Download paused' : job.status === 'cancelled' ? 'Download cancelled' : 'Saving to folder', totals.processed / totals.selected * 100, `Saved: ${totals.saved}/${totals.selected} files${totals.synced ? ` · ${totals.synced} already saved` : ''}${totals.failed ? ` · ${totals.failed} unavailable` : ''}`);
+  else if (job.status === 'finished' && view.duplicates) progress('Saved', 100, `${view.duplicates} duplicates reused. No new files needed.`);
   else progress(totals.discoveryFailures ? 'Ready to save available posts' : 'Ready to save', 100, `Discovered: ${totals.posts}/${totals.total ?? totals.posts} posts`);
   el('summary').textContent = [totals.images ? `${totals.images} images` : '', totals.files ? `${totals.files} other files` : ''].filter(Boolean).join(' · ');
+  if (view.duplicates) el('summary').textContent += ` · ${view.duplicates} duplicates avoided`;
   if (totals.thumbnails) el('summary').textContent += ` · ${totals.thumbnails} saved as thumbnails`;
   if (totals.extracting) el('summary').textContent += ' · Extracting archives';
   if (totals.extracted) el('summary').textContent += ` · ${totals.extracted} unpacked files`;
@@ -352,6 +386,7 @@ function renderPost(view: PostView): void {
   common(job.status, job.archive, totals.retryable, job.scan.complete && (totals.selectedPosts > 0 || totals.discoveryFailures > 0 && view.allPostsSelected), job.transferPolicy);
 }
 function renderDiscord(view: DiscordView): void {
+  el('media-refresh').hidden = true;
   el('transfer-progress').hidden = true;
   const { job, totals } = view;
   el('title').textContent = job.serverName || 'Discord archive'; el('subtitle').textContent = job.channels.length === 1 ? job.channels[0].channelName || 'Current channel' : 'Entire server';

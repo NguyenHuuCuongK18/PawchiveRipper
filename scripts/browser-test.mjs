@@ -69,7 +69,7 @@ try {
   await worker.evaluate(async () => { if (!(await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT] })).length) await chrome.offscreen.createDocument({ url: 'offscreen/index.html', reasons: [chrome.offscreen.Reason.BLOBS], justification: 'Test archive transfers.' }); });
   const offscreenUrl = `chrome-extension://${extensionId}/offscreen/index.html`;
   await waitFor(async () => (await cdp.send('Target.getTargets')).targetInfos.some(target => target.url === offscreenUrl));
-  const fixture = (await readFile('tests/fixtures/bird_01.thumbnail.png')).toString('base64');
+  const fixture = (await readFile('tests/fixtures/test-image.jpg')).toString('base64');
   const fileBytes = [56, 66, 80, 83, 0, 1, 10, 20, 30];
   await targetEvaluate(offscreenUrl, `(() => { const image = Uint8Array.from(atob(${JSON.stringify(fixture)}),c=>c.charCodeAt(0)); globalThis.__mediaRequests=[]; const nativeFetch=fetch; globalThis.fetch=async(input,init)=>{const url=String(input); if(!url.startsWith('https:'))return nativeFetch(input,init); globalThis.__mediaRequests.push(url); const bytes=url.includes('.psd')?new Uint8Array(${JSON.stringify(fileBytes)}):image; let timer; const stream=new ReadableStream({start(controller){controller.enqueue(bytes.slice(0,4));timer=setTimeout(()=>{controller.enqueue(bytes.slice(4));controller.close();},3000);},cancel(){clearTimeout(timer);}}); return new Response(stream,{headers:{'content-type':url.includes('.psd')?'application/octet-stream':'image/jpeg'}});}; return true; })()`);
   const send = (message) => frame.evaluate(async message => { const reply=await chrome.runtime.sendMessage(message); if(!reply.ok)throw new Error(reply.error); return reply.data; },message);
@@ -293,7 +293,7 @@ try {
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId: wrappedJobId })).job.status === 'finished');
   const wrapperTree = await targetEvaluate(offscreenUrl, `(async()=>{const parent=await(await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location');const root=[];for await(const entry of parent.values())root.push(entry.name);const creator=await parent.getDirectoryHandle('fanbox_4862787_Sample creator');const children=[];for await(const entry of creator.values())children.push(entry.name);return{root,children,index:JSON.parse(await(await(await creator.getFileHandle('sync.json')).getFile()).text())};})()`);
   assert.deepEqual(wrapperTree.root, ['fanbox_4862787_Sample creator']);
-  assert.deepEqual(wrapperTree.children.sort(), ['failures.json', 'full res', 'settings.json', 'sync.json']);
+  assert.deepEqual(wrapperTree.children.sort(), ['duplicates.json', 'failures.json', 'full res', 'settings.json', 'sync.json']);
   assert.equal(wrapperTree.index.posts[0].files.length, 3);
   assert(wrapperTree.index.posts[0].files.every(file => file.path.startsWith('full res/2026-10-01_1_Sample post/')));
   await newPicker.close();

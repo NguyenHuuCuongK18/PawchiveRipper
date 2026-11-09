@@ -25,6 +25,16 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
+it('streams a partitioned MP4 attachment without image decoding or ZIP extraction', async () => {
+  const bytes = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 109, 112, 52, 50]);
+  const url = `https://n4.pawchive.pw/data/1aa/bb/${'a'.repeat(64)}.mp4?f=clip.mp4`;
+  const fetch = vi.fn().mockResolvedValue(new Response(bytes, { headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(bytes.length) } }));
+  vi.stubGlobal('fetch', fetch);
+  await expect(transferPost('job', { ...task, url, path: 'full res/11597323_Large attachment/clip.mp4' }, post, source)).resolves.toEqual({ bytes: bytes.length, ext: undefined });
+  expect(fetch.mock.calls[0][0]).toBe(url);
+  expect(mocks.stageStream).toHaveBeenCalledOnce();
+});
+
 it('finishes an actively streaming file after more than five minutes without restarting it', async () => {
   let stream!: ReadableStreamDefaultController<Uint8Array>;
   const input = new ReadableStream<Uint8Array>({ start(controller) { stream = controller; } });

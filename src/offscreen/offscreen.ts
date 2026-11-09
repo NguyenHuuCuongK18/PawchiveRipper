@@ -8,7 +8,7 @@ import { archiveFile, buildZip, clearZipCache, clearAllZipCaches, removeStagedFi
 import { buildPostZip } from '../services/posts/zip';
 import { postTaskCached, transferPost } from '../services/posts/transfer';
 import { checkFolder, folderSync, writePostFile, writePostIndex } from '../services/posts/folder';
-import { startExtraction, extractionStatus, forgetExtraction, commitExtraction, stopExtractions, extractingJobs, clearExtractedCache, removeExtractedArchive } from '../services/posts/extraction';
+import { startExtraction, extractionStatus, forgetExtraction, commitExtraction, stopExtractions, extractingJobs, clearExtractedCache, removeExtractedArchive, deduplicateExtraction } from '../services/posts/extraction';
 import type { ArchivedPost, PostJob, PostScope, PostTask, PostTransferProgress } from '../services/posts/types';
 const urls = new Map<string, Blob>();
 interface Build { state: 'building' | 'ready' | 'failed'; progress: number; total: number; bytes: number; entries: number; error: string | null; abort: AbortController; work?: Promise<void> }
@@ -54,10 +54,12 @@ async function process(message: { action: string; cleanup?: ZipCacheCleanup; url
   if (message.action === 'post-cache-remove') { await removeStagedFile(message.jobId!, message.recordId!); return null; }
   if (message.action === 'post-extract-start') { startExtraction(message.postJob!, message.recordId!); return null; }
   if (message.action === 'post-extract-status') return extractionStatus(message.jobId!, message.recordId!);
+  if (message.action === 'post-extract-deduplicate') return deduplicateExtraction(message.postJob!, message.recordId!);
   if (message.action === 'post-extract-commit') return commitExtraction(message.postJob!, message.recordId!);
   if (message.action === 'post-extract-remove-original') { await removeExtractedArchive(message.postJob!, message.recordId!); return null; }
   if (message.action === 'post-extract-forget') {
-    if (message.postJob?.destination?.kind === 'folder') await clearExtractedCache(message.jobId!, extractionStatus(message.jobId!, message.recordId!)?.files || []);
+    const files = extractionStatus(message.jobId!, message.recordId!)?.files || [];
+    await clearExtractedCache(message.jobId!, message.postJob?.destination?.kind === 'folder' ? files : files.filter(file => file.duplicateOf));
     forgetExtraction(message.jobId!, message.recordId!); return null;
   }
   if (message.action === 'post-transfer-start') {

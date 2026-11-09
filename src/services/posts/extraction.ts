@@ -4,6 +4,8 @@ import { stagedFile, removeStagedFile } from '../../storage/zipCache';
 import { postRelativePath } from './media';
 import { syncKey } from './sync';
 import { writePostIndex } from './folder';
+import { IdenticalFileIndex } from './identicalFiles';
+import { isArchive } from './fileTypes';
 import type { ExtractedFile, PostExtraction, PostJob, PostTask } from './types';
 
 interface Running { jobId: string; result: PostExtraction; worker?: Worker; timer?: ReturnType<typeof setTimeout> }
@@ -45,12 +47,50 @@ export function startExtraction(job: PostJob, id: string): void {
   })().catch(error => { item.result = { state: 'failed', files: [], error: error instanceof Error ? error.message : 'Archive extraction failed. The original was kept.' }; });
 }
 export function extractionStatus(jobId: string, id: string): PostExtraction | null { return running.get(key(jobId, id))?.result || null; }
+export async function deduplicateExtraction(job: PostJob, id: string): Promise<ExtractedFile[]> {
+  const result = extractionStatus(job.id, id); if (!result || result.state === 'extracting') throw new Error('Archive extraction is not ready.');
+  if (!job.selection.deduplicate) return result.files;
+  const task = job.tasks.find(task => task.id === id)!;
+  const index = new IdenticalFileIndex(), seen = new Set<string>();
+  const folder = job.destination?.kind === 'folder' ? await requireDirectory(job.destination.directoryId) : undefined;
+  const readFolder = async (path: string): Promise<Blob> => {
+    let directory: FileSystemDirectoryHandle = folder!; const parts = relativePathParts(path);
+    for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
+    return (await directory.getFileHandle(parts.at(-1)!)).getFile();
+  };
+  const add = (file: ExtractedFile, read: () => Promise<Blob>) => {
+    if (file.duplicateOf || seen.has(file.path) || !file.path.startsWith(task.quality + '/')) return;
+    seen.add(file.path); index.add({ ...file, read });
+  };
+  for (const other of job.tasks) if (other.id !== id && ['staged', 'downloaded'].includes(other.status) && other.kind !== 'text') {
+    // Top-level archive sources may be removed after extraction, so they cannot own shared outputs.
+    if (!other.extraction && !isArchive(other.path)) {
+      const file = { id: other.id, path: postRelativePath(other), bytes: other.bytes! };
+      add(file, () => other.status === 'downloaded' && folder ? readFolder(file.path) : stagedFile(job.id, other.id));
+    }
+    if (other.extraction?.state === 'done') for (const file of other.extraction.files) add(file, () => other.status === 'downloaded' && folder ? readFolder(file.path) : stagedFile(job.id, file.id));
+  }
+  if (folder) for (const post of job.sync?.posts || []) for (const saved of post.files) {
+    if (syncKey(saved.id) === syncKey(id)) continue;
+    if (saved.originalKept !== false && saved.kind !== 'text' && !isArchive(saved.path)) add(saved, () => readFolder(saved.path));
+    for (const file of saved.extracted || []) add(file, () => readFolder(file.path));
+  }
+  const files: ExtractedFile[] = [];
+  for (const file of result.files) {
+    const blob = await stagedFile(job.id, file.id); if (blob.size !== file.bytes) throw new Error('Extracted file is incomplete.');
+    const duplicateOf = await index.match(blob);
+    files.push(duplicateOf ? { ...file, duplicateOf } : file);
+    if (!duplicateOf) add(file, () => stagedFile(job.id, file.id));
+  }
+  result.files = files; return files;
+}
 export function forgetExtraction(jobId: string, id: string): void { const item = running.get(key(jobId, id)); item?.worker?.terminate(); clearTimeout(item?.timer); running.delete(key(jobId, id)); }
 export async function commitExtraction(job: PostJob, id: string): Promise<ExtractedFile[]> {
   if (job.destination?.kind !== 'folder') throw new Error('Choose a creator folder first.');
   const result = extractionStatus(job.id, id); if (!result || result.state === 'extracting') throw new Error('Archive extraction is not ready.');
   const files: ExtractedFile[] = [];
   for (const file of result.files) {
+    if (file.duplicateOf) { files.push(file); continue; }
     const blob = await stagedFile(job.id, file.id); if (blob.size !== file.bytes) throw new Error('Extracted file is incomplete.');
     // Extraction output is derived from this archive and owns its stable path.
     // Re-extraction must replace stale contents instead of creating "(1)" copies.
@@ -69,7 +109,7 @@ export async function removeExtractedArchive(job: PostJob, id: string): Promise<
   await writePostIndex(job);
   const root = await requireDirectory(job.destination.directoryId);
   for (const entry of task.extraction.files) {
-    let directory: FileSystemDirectoryHandle = root; const parts = relativePathParts(entry.path);
+    let directory: FileSystemDirectoryHandle = root; const parts = relativePathParts(entry.duplicateOf?.path || entry.path);
     for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
     if ((await (await directory.getFileHandle(parts.at(-1)!)).getFile()).size !== entry.bytes) throw new Error('An extracted file is incomplete. The original was kept.');
   }

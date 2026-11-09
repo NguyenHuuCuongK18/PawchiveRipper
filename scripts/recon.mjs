@@ -4,8 +4,9 @@ import { resolve } from 'node:path';
 
 // No existing browser profile, cookies, tokens, or user account is accessed.
 const root = resolve('.probe');
+const capture = resolve('artifacts/recon');
 await mkdir(root, { recursive: true });
-await mkdir('tests/fixtures', { recursive: true });
+await mkdir(capture, { recursive: true });
 await writeFile(resolve(root, 'manifest.json'), JSON.stringify({
   manifest_version: 3, name: 'Archive networking probe', version: '0.0.1',
   background: { service_worker: 'worker.js' }, permissions: ['downloads'],
@@ -37,7 +38,7 @@ try {
     id: c.id, server_id: c.server_id, name: c.name, parent_channel_id: c.parent_channel_id,
     type: c.type, position: c.position, post_count: c.post_count,
   })) };
-  await writeFile('tests/fixtures/server.sanitized.json', JSON.stringify(safeServer, null, 2));
+  await writeFile(resolve(capture, 'server.sanitized.json'), JSON.stringify(safeServer, null, 2));
   const report = { serverStatus: server.status, apiMime: server.contentType, channels: [], thumbnail: null, pageContext: null };
   for (const channel of channels) {
     const pages = [];
@@ -50,7 +51,7 @@ try {
         content: (m.content?.match(/https:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\/[^\s<>"']+/g) || []).join(' '),
         attachments: (m.attachments || []).map(a => ({ name: a.name, path: a.path })),
       }));
-      await writeFile(`tests/fixtures/channel-${channel}-${offset}.sanitized.json`, JSON.stringify(safe, null, 2));
+      await writeFile(resolve(capture, `channel-${channel}-${offset}.sanitized.json`), JSON.stringify(safe, null, 2));
       pages.push({ offset, count: safe.length, first: safe[0]?.id, last: safe.at(-1)?.id, attachments: safe.reduce((n, m) => n + m.attachments.length, 0) });
       await new Promise(r => setTimeout(r, 1100));
     }
@@ -67,7 +68,7 @@ try {
     bitmap.close();
     return { ...result, base64: btoa([...new Uint8Array(bytes)].map(b => String.fromCharCode(b)).join('')) };
   }, thumbnailUrl);
-  await writeFile('tests/fixtures/bird_01.thumbnail.png', Buffer.from(report.thumbnail.base64, 'base64'));
+  await writeFile(resolve(capture, 'observed-thumbnail.bin'), Buffer.from(report.thumbnail.base64, 'base64'));
   delete report.thumbnail.base64;
   // Verify browser-managed downloads as well as byte reads.
   report.download = await worker.evaluate(async url => {
@@ -101,7 +102,7 @@ try {
     }
     return article.outerHTML;
   }).join('\n'));
-  await writeFile('tests/fixtures/channel.sanitized.html', safeHtml);
-  await writeFile('tests/fixtures/recon.json', JSON.stringify(report, null, 2));
+  await writeFile(resolve(capture, 'channel.sanitized.html'), safeHtml);
+  await writeFile(resolve(capture, 'recon.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally { await context.close(); }

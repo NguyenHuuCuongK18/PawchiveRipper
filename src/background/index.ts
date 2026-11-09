@@ -37,7 +37,7 @@ chrome.action.onClicked.addListener(tab => {
   void (async () => {
     try { await chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_OVERLAY' }); }
     catch { await chrome.scripting.executeScript({ target: { tabId: tab.id! }, files: ['content.js'] }); await chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_OVERLAY' }); }
-  })().catch(() => { void chrome.action.setTitle({ tabId: tab.id, title: 'Refresh this page, then open Archive Ripper.' }); });
+  })().catch(() => { void chrome.action.setTitle({ tabId: tab.id, title: 'Refresh this page, then open Pawchive Ripper.' }); });
 });
 async function updateAction(tab: chrome.tabs.Tab): Promise<void> { if (tab.id !== undefined) await (supportedSite(tab.url || '') ? chrome.action.enable(tab.id) : chrome.action.disable(tab.id)); }
 chrome.tabs.onUpdated.addListener((_id, _change, tab) => { void updateAction(tab); });

@@ -4,7 +4,8 @@ import { stagedFile } from '../../storage/zipCache';
 import { assertSyncSource, mergeSync, parseSync, syncKey } from './sync';
 import { postFailures } from './failures';
 import { archiveSettings, parseSettings } from './settings';
-import type { PostExtraction, PostJob, PostSyncIndex } from './types';
+import { attachmentKey, duplicateReport } from './duplicates';
+import type { PostDuplicate, PostExtraction, PostJob, PostSyncFile, PostSyncIndex } from './types';
 
 export async function folderSync(directoryId: string, job: PostJob): Promise<PostSyncIndex | undefined> {
   const directory = await requireDirectory(directoryId);
@@ -25,20 +26,37 @@ export async function folderSync(directoryId: string, job: PostJob): Promise<Pos
   } catch (error) { if (!(error instanceof DOMException && error.name === 'NotFoundError')) throw error; }
   return undefined;
 }
-export async function checkFolder(job: PostJob): Promise<{ sync: PostSyncIndex | undefined; files: { id: string; path: string; bytes: number; extraction?: PostExtraction }[] }> {
+export async function checkFolder(job: PostJob): Promise<{ sync: PostSyncIndex | undefined; files: { id: string; path: string; bytes: number; extraction?: PostExtraction }[]; duplicates: PostDuplicate[] }> {
   if (job.destination?.kind !== 'folder') throw new Error('Choose a creator folder first.');
   const directoryId = job.destination.directoryId, directory = await requireDirectory(directoryId);
   const existing = await folderSync(directoryId, job);
   const sync = existing ? mergeSync(job.sync, existing) : job.sync;
   const downloaded = new Map(sync?.posts.flatMap(post => post.files.map(file => [file.id, file] as const)) || []);
   const files = [];
+  const duplicates: PostDuplicate[] = [];
+  const byContent = new Map<string, PostSyncFile[]>();
+  if (job.selection.deduplicate) for (const saved of downloaded.values()) {
+    const key = attachmentKey(saved.id, saved.quality); if (!key) continue;
+    const group = byContent.get(key) || []; group.push(saved); byContent.set(key, group);
+  }
+  const directories = new Map<string, FileSystemDirectoryHandle>([['', directory]]);
   async function matches(path: string, bytes: number): Promise<boolean> {
     try {
       let parent: FileSystemDirectoryHandle = directory;
       const parts = relativePathParts(path);
-      for (const part of parts.slice(0, -1)) parent = await parent.getDirectoryHandle(part);
+      let prefix = '';
+      for (const part of parts.slice(0, -1)) {
+        prefix += part + '/';
+        parent = directories.get(prefix) || await parent.getDirectoryHandle(part);
+        directories.set(prefix, parent);
+      }
       return (await (await parent.getFileHandle(parts.at(-1)!)).getFile()).size === bytes;
-    } catch (error) { if (error instanceof DOMException && error.name === 'NotFoundError') return false; throw error; }
+    } catch (error) {
+      // Older ZIPs can contain names the local File System Access API rejects.
+      // Leave their history intact until a replacement saves at its new safe path.
+      if (error instanceof DOMException && error.name === 'NotFoundError' || error instanceof TypeError && error.message.includes('Name is not allowed')) return false;
+      throw error;
+    }
   }
   for (const task of job.tasks) {
     const saved = downloaded.get(syncKey(task.id)); if (!saved) continue;
@@ -46,12 +64,29 @@ export async function checkFolder(job: PostJob): Promise<{ sync: PostSyncIndex |
     let extraction: PostExtraction | undefined;
     if (task.extraction && saved.extracted?.length) {
       let complete = true;
-      for (const entry of saved.extracted) if (!await matches(entry.path, entry.bytes)) { complete = false; break; }
+      for (const entry of saved.extracted) if ((!job.selection.deduplicate && entry.duplicateOf) || !await matches(entry.duplicateOf?.path || entry.path, entry.bytes)) { complete = false; break; }
       if (complete) extraction = { state: 'done', files: saved.extracted, originalRemoved: !original };
     }
     if (original || (extraction && saved.originalKept === false)) files.push({ id: task.id, path: saved.path, bytes: saved.bytes, ...(extraction ? { extraction } : {}) });
   }
-  return { sync, files };
+  if (job.selection.deduplicate) {
+    const savedIds = new Set(files.map(file => file.id));
+    for (const task of job.tasks) if (!savedIds.has(task.id)) {
+      const key = attachmentKey(task.id, task.quality); if (!key) continue;
+      for (const saved of byContent.get(key) || []) {
+        if (saved.id === syncKey(task.id)) continue;
+        let intact = saved.originalKept !== false && await matches(saved.path, saved.bytes);
+        if (!intact && task.extraction && saved.originalKept === false && saved.extracted?.length) {
+          intact = true;
+          for (const entry of saved.extracted) if (!await matches(entry.duplicateOf?.path || entry.path, entry.bytes)) { intact = false; break; }
+        }
+        if (!intact) continue;
+        const retainedPaths = saved.originalKept === false ? saved.extracted!.map(entry => entry.duplicateOf?.path || entry.path) : undefined;
+        duplicates.push({ postId: task.postId, path: task.path, duplicateOf: retainedPaths?.[0] || saved.path, keptTaskId: saved.id, existing: true, bytes: saved.bytes, ...(retainedPaths ? { retainedPaths } : {}) }); break;
+      }
+    }
+  }
+  return { sync, files, duplicates };
 }
 export async function writePostFile(job: PostJob, taskId: string): Promise<{ path: string; bytes: number }> {
   if (job.destination?.kind !== 'folder') throw new Error('Choose a creator folder first.');
@@ -69,6 +104,7 @@ export async function writePostIndex(job: PostJob): Promise<void> {
   const index = mergeSync(existing, job.sync);
   await writeRelativeFile(directoryId, 'sync.json', new Blob([JSON.stringify(index, null, 2)], { type: 'application/json' }), true);
   await writeRelativeFile(directoryId, 'failures.json', new Blob([JSON.stringify(postFailures(job), null, 2)], { type: 'application/json' }), true);
+  if (job.selection.deduplicate || job.duplicates?.length) await writeRelativeFile(directoryId, 'duplicates.json', new Blob([JSON.stringify(duplicateReport(job), null, 2)], { type: 'application/json' }), true);
   const settings = JSON.stringify(archiveSettings(job.source, job.selection), null, 2);
   let unchanged = false;
   try { unchanged = await (await (await (await requireDirectory(directoryId)).getFileHandle('settings.json')).getFile()).text() === settings; }

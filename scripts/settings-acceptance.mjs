@@ -64,6 +64,8 @@ try {
   assert.equal(await checkbox.evaluateAll(inputs => inputs.every(input => input.checked)), true);
   await frame.locator('#file-type-options input[data-file-type="psd"]').uncheck();
   await frame.locator('#extract-archives').check();
+  // This suite verifies the pre-deduplication extraction layout; duplicate removal has its own suite.
+  await frame.locator('#deduplicate').uncheck();
   console.log('PASS: scanned types include unknown files and compound archives; all types default to selected and can be deselected.');
   await worker.evaluate(async () => {
     if (!(await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT] })).length)
@@ -84,7 +86,7 @@ try {
     } finally { await cdp.send('Target.detachFromTarget', { sessionId }); }
   }
   await targetEvaluate(`(()=>{const fixtures=${JSON.stringify(fixtures)};const nativeFetch=fetch;globalThis.__mediaRequests=[];globalThis.fetch=async(input,init)=>{const url=new URL(String(input));if(url.protocol!=='https:')return nativeFetch(input,init);globalThis.__mediaRequests.push(url.href);const file=fixtures.find(file=>url.pathname==='/data'+file.path);return file?new Response(new Uint8Array(file.bytes),{headers:{'content-type':'application/octet-stream','content-length':String(file.bytes.length)}}):new Response('',{status:404});};return true;})()`);
-  const selection = { quality: 'full res', images: true, files: true, text: true, fallbackToThumbnail: true, excludedFileTypes: ['psd'], extractArchives: true };
+  const selection = { quality: 'full res', images: true, files: true, text: true, fallbackToThumbnail: true, excludedFileTypes: ['psd'], extractArchives: true, deduplicate: false, excludedAttachmentIds: [] };
   await frame.locator('#destination-zip').check(); await frame.locator('#download').click();
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.archive?.state === 'saved');
   const view = await send({ type: 'POST_DETAIL', jobId });

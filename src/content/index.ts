@@ -7,10 +7,12 @@ if (!state.__archiveRipperLoaded) {
 state.__archiveRipperLoaded = true;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let previousUrl = '';
+const observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(collect, 1600); });
 function collect(): void {
   previousUrl = location.href;
   const scope = parseChannelUrl(location.href);
-  if (!scope) return;
+  if (!scope) { observer.disconnect(); return; }
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-src', 'srcset', 'href'] });
   const scan = scanDom(document, scope);
   void chrome.runtime.sendMessage({ type: 'DOM', url: location.href, ...scan }).catch(() => {});
 }
@@ -24,7 +26,6 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
   if (message.type === 'DISCOVER_CHANNELS') { respond(scanChannelNavigation(document, location.href)); return; }
   if (message.type === 'SCAN_DOM') { collect(); respond({ ok: true }); }
 });
-new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(collect, 1600); }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-src', 'srcset', 'href'] });
 setInterval(() => { if (location.href !== previousUrl) collect(); }, 3000);
 collect();
 }

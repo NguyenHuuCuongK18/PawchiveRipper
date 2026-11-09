@@ -46,19 +46,22 @@ export function retryPostFailures(job: PostJob): void {
   job.scan.retryQueue = structuredClone(job.scan.failures || []);
   job.scan.retrying = true; job.scan.complete = false; job.scan.consecutiveFailures = 0;
 }
-function acceptPost(job: PostJob, post: ApiPost): void {
-  const normalized = normalizePost(post, job.source), index = job.posts.findIndex(previous => previous.id === post.id);
-  if (index < 0) job.posts.push(normalized); else if (job.scan.retrying || job.detailQueue[0] === post.id) job.posts[index] = normalized;
+function acceptPost(job: PostJob, post: ApiPost, positions: Map<string, number>, queued: Set<string>): void {
+  const normalized = normalizePost(post, job.source), index = positions.get(post.id) ?? -1;
+  if (index < 0) { positions.set(post.id, job.posts.length); job.posts.push(normalized); }
+  else if (job.scan.retrying || job.detailQueue[0] === post.id) job.posts[index] = normalized;
   const needsDetail = post.detail_fetched === false || post.content === undefined || post.attachments === undefined;
-  if (!job.source.postId && needsDetail && !job.detailQueue.includes(post.id)) job.detailQueue.push(post.id);
+  if (!job.source.postId && needsDetail && !queued.has(post.id)) { job.detailQueue.push(post.id); queued.add(post.id); }
   if (!needsDetail) clearFailure(job, { kind: 'post', offset: job.scan.offset, postId: post.id });
 }
 export async function discoverPosts(job: PostJob, client: PostClient): Promise<void> {
   const item = target(job);
   if (!item) { finish(job); readyForNext(job); return; }
+  const positions = new Map(job.posts.map((post, index) => [post.id, index]));
+  const queued = new Set(job.detailQueue);
   try {
     if (item.kind === 'post') {
-      acceptPost(job, await client.post({ ...job.source, postId: item.postId }));
+      acceptPost(job, await client.post({ ...job.source, postId: item.postId }), positions, queued);
       clearFailure(job, item); advance(job, item);
     } else {
       if (!job.scan.retrying && job.scan.pages >= 10000) throw new Error('The profile exceeded the scan page limit.');
@@ -66,7 +69,7 @@ export async function discoverPosts(job: PostJob, client: PostClient): Promise<v
       if (!job.scan.retrying && fingerprint && job.scan.fingerprints.includes(fingerprint)) throw new Error('The API repeated a page. Retry or skip this error to continue.');
       if (fingerprint && !job.scan.fingerprints.includes(fingerprint)) job.scan.fingerprints.push(fingerprint);
       clearFailure(job, item);
-      for (const post of page.posts) acceptPost(job, post);
+      for (const post of page.posts) acceptPost(job, post, positions, queued);
       for (const failure of page.failures) recordFailure(job, { kind: failure.postId ? 'post' : 'page', offset: item.offset, postId: failure.postId }, failure.error, 422);
       job.scan.consecutiveFailures = page.count && !page.posts.length ? (job.scan.consecutiveFailures || 0) + 1 : 0;
       if (job.scan.consecutiveFailures >= 3) {

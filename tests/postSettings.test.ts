@@ -36,7 +36,7 @@ describe('scanned file types and archive settings', () => {
   it('round-trips settings and supplies default values for omitted optional settings', () => {
     const selection = { ...defaultSelection(), excludedFileTypes: ['psd'], extractArchives: true };
     expect(parseSettings(JSON.parse(JSON.stringify(archiveSettings(source, selection))), source)).toEqual(selection);
-    expect(parseSettings(archiveSettings(source, { quality: 'full res', images: true, files: true, text: true }), source)).toEqual(defaultSelection());
+    expect(parseSettings(archiveSettings(source, { quality: 'full res', images: true, files: true, text: true }), source)).toEqual({ ...defaultSelection(), deduplicate: false });
     expect(validSelection({ ...selection, excludedFileTypes: ['psd', 'png', 'psd'] }).excludedFileTypes).toEqual(['png', 'psd']);
   });
   it('rejects foreign or malformed settings instead of silently changing the archive selection', () => {

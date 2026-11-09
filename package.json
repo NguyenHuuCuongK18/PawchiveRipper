@@ -1,9 +1,9 @@
 {
-  "name": "kemono-pawchive-archive-ripper",
-  "version": "0.7.0",
+  "name": "pawchive-ripper",
+  "version": "0.9.1",
   "private": true,
   "type": "module",
-  "description": "Local-first Discord and Patreon/Fanbox post archiver for Kemono and Pawchive",
+  "description": "Save Pawchive and Kemono posts, files, and Discord archives on your device.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,7 +17,11 @@
     "recon": "node scripts/recon.mjs",
     "package": "node scripts/package.mjs",
     "release:verify": "node scripts/verify-release.mjs",
-    "release:check": "npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run test:tolerance && npm run test:settings && npm run package && npm run release:verify"
+    "release:check": "npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run test:tolerance && npm run test:settings && npm run test:compatibility && npm run test:duplicates && npm run package && npm run release:verify",
+    "test:compatibility": "node scripts/blocklist-acceptance.mjs",
+    "test:duplicates": "node scripts/duplicates-acceptance.mjs",
+    "clean": "node scripts/clean.mjs",
+    "fixtures:image": "node scripts/make-test-image.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.24",
@@ -35,5 +39,14 @@
   "dependencies": {
     "@zip.js/zip.js": "2.23.0",
     "libarchive-wasm": "1.2.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NguyenHuuCuongK18/PawchiveRipper.git"
+  },
+  "homepage": "https://github.com/NguyenHuuCuongK18/PawchiveRipper#readme",
+  "bugs": {
+    "url": "https://github.com/NguyenHuuCuongK18/PawchiveRipper/issues"
   }
 }

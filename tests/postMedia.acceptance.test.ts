@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/post-11312487.sanitized.json';
 import manifest from '../src/manifest.json';
 import { PostClient } from '../src/services/posts/client';
-import { createTasks, normalizePost, safePostMediaUrl } from '../src/services/posts/media';
-import { safeMediaUrl } from '../src/core/urlParser';
+import { createTasks, normalizePost, postRelativePath, safePostMediaUrl } from '../src/services/posts/media';
+import { makeThumbnailUrl, safeMediaUrl } from '../src/core/urlParser';
+import { emptySync, parseSync, recordSaved } from '../src/services/posts/sync';
 import type { ApiPost, PostJob, PostScope } from '../src/services/posts/types';
 
 const scope: PostScope = { origin: 'https://pawchive.pw', platform: 'fanbox', creatorId: fixture.user, postId: fixture.id };
@@ -18,6 +19,38 @@ function tasks(value: ApiPost, source = scope) {
 }
 
 describe('post media acceptance', () => {
+  it.each(['1', '2'])('keeps partition %s originals and generates unpartitioned thumbnails for images and MP4s', partition => {
+    const imagePath = `/${partition}aa/bb/${'a'.repeat(64)}.png`;
+    const videoPath = `/${partition}cc/dd/${'c'.repeat(64)}.mp4`;
+    const value = { ...post, file: { name: 'cover.png', path: imagePath, server: 'https://n1.pawchive.pw' },
+      attachments: [{ name: 'clip.mp4', path: videoPath, server: 'https://n4.pawchive.pw' }] };
+    const media = normalizePost(value, scope).media;
+    expect(media).toHaveLength(2);
+    expect(media[0]).toMatchObject({ path: imagePath, kind: 'image', originalUrl: `https://n1.pawchive.pw/data${imagePath}?f=cover.png`, thumbnailUrl: `https://img.pawchive.pw/thumbnail/data/aa/bb/${'a'.repeat(64)}.png` });
+    expect(media[1]).toMatchObject({ path: videoPath, kind: 'file', originalUrl: `https://n4.pawchive.pw/data${videoPath}?f=clip.mp4`, thumbnailUrl: null });
+    expect(makeThumbnailUrl(imagePath, scope.origin)).toBe(media[0].thumbnailUrl);
+    expect(safeMediaUrl(media[0].originalUrl)).toBe(media[0].originalUrl);
+    expect(tasks(value).filter(task => task.kind !== 'text')).toEqual([
+      expect.objectContaining({ kind: 'image', quality: 'thumbnail', status: 'queued' }),
+      expect.objectContaining({ kind: 'image', quality: 'full res', status: 'queued' }),
+      expect.objectContaining({ kind: 'file', quality: 'full res', url: media[1].originalUrl, status: 'queued' }),
+    ]);
+    const history = emptySync({ source: scope, creatorName: 'Test', selection: { quality: 'both', images: true, files: true, text: true } });
+    for (const task of tasks(value)) recordSaved(history, { ...task, path: postRelativePath(task), status: 'downloaded', bytes: 12 }, value.title || 'Test');
+    expect(parseSync(history, scope).posts).toEqual(history.posts);
+    const fallback = createTasks({ source: scope, creatorName: 'Test', posts: [normalizePost({ ...value, has_full: false }, scope)] } as PostJob,
+      { quality: 'full res', images: true, files: false, text: false, fallbackToThumbnail: true });
+    expect(fallback).toEqual([expect.objectContaining({ fallback: true, url: media[0].thumbnailUrl, status: 'queued' })]);
+  });
+
+  it('merges partitioned originals and unpartitioned inline previews into one attachment', () => {
+    const path = `/2aa/bb/${'a'.repeat(64)}.png`, preview = `https://img.pawchive.pw/thumbnail/data/aa/bb/${'a'.repeat(64)}.png`;
+    const original = `https://n4.pawchive.pw/data${path}?f=cover.png&download=1`;
+    const value = { ...post, file: { name: 'cover.png', path, server: 'https://n1.pawchive.pw' }, attachments: [],
+      content: `<img src="${preview}"><a href="${original.replaceAll('&', '&amp;')}">Original</a><img src="${preview}">` };
+    expect(normalizePost(value, scope).media).toEqual([expect.objectContaining({ path, originalUrl: original, thumbnailUrl: preview })]);
+  });
+
   it('archives the reported main file even when the API says attachments: []', async () => {
     const transport = vi.fn().mockResolvedValue(new Response(JSON.stringify(post)));
     const value = await new PostClient(transport).post(scope);
@@ -79,7 +112,7 @@ describe('post media acceptance', () => {
     expect(media[0].originalUrl).toBe(`https://n42.pawchive.pw/data${post.file!.path}?f=${post.file!.name}`);
   });
 
-  it.each(['/../../image.jpeg', '/data/avatars/image.jpeg', '/data/aa/bb/not-a-hash.jpeg'])('rejects non-attachment path %s on a trusted host', path => {
+  it.each(['/../../image.jpeg', '/data/avatars/image.jpeg', '/data/aa/bb/not-a-hash.jpeg', '/data/22aa/bb/' + 'a'.repeat(64) + '.png', '/data/2gg/bb/' + 'a'.repeat(64) + '.png'])('rejects non-attachment path %s on a trusted host', path => {
     expect(safePostMediaUrl(`https://n42.pawchive.pw${path}`)).toBeNull();
     expect(safeMediaUrl(`https://n42.pawchive.pw${path}`)).toBeNull();
   });

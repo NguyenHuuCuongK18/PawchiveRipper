@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.1 — 2026-11-09
+
+- Prepare the renamed Pawchive Ripper repository for public distribution with a focused usage README, development guide and versioned release notes.
+- Add the MIT license and complete runtime dependency notices to the repository and installable ZIP. Verify notice copies, package bytes and published SHA-256 checksums.
+- Replace the captured browser-test artwork with an original generated geometric JPEG; document fixture provenance and keep live recon captures out of committed fixtures.
+- Keep generated packages, browser profiles, screenshots and editor state out of source control. Add bounded cleanup tooling, LF source normalization, CI and a manual tagged-release workflow.
+
+## 0.9.0 — 2026-11-09
+
+- Add **Avoid exact duplicates**, enabled for new jobs. Repeated attachment hashes share one transfer per quality, including source archives reposted under different names or storage partitions. Preserve each post's text and keep alternate download hosts for missing originals.
+- Add a searchable **Archives & versions** checklist with per-archive selection and select/clear controls. Persist choices and duplicate settings in creator-scoped settings. Different language variants and edits are retained automatically.
+- Compare extracted files against loose media, earlier archives and existing creator-folder history. Use bounded fingerprints for candidate lookup and complete byte comparisons before sharing outputs. ZIPs/folders contain one retained copy plus `duplicates.json` references; sync history validates shared targets and recovers missing outputs.
+- Reuse identical earlier archives during subset/single-post folder sync, including complete extracted-only archives. Keep legacy sync/settings compatible and allow duplicate handling to be disabled for independent copies. Previously saved files are preserved.
+- Add duplicate-planning, exact-comparison, settings/reference-validation, alternate-host and extraction-order unit checks, plus a complete recap ZIP/folder browser workflow with translation preservation and missing-output recovery.
+
+## 0.8.0 — 2026-11-09
+
+- Rename the extension to **Pawchive Ripper** and match Pawchive Blocklist's purple colors, typography, controls and branded header. Align release names as `releases/pawchive-ripper-VERSION.zip`, and show the installed version in the overlay.
+- Accept Pawchive's partitioned three-character storage shards for originals, including images, MP4 and source archives. Generate unpartitioned thumbnail paths, merge inline previews with their originals, and accept partitioned identities when reading saved sync history.
+- Mark old scans with a visible **Refresh scan** action so cached text-only results can be repaired while retaining destination, selection and sync history. Keep existing extension storage and portable formats compatible.
+- Use indexed post/media lookups during discovery and ZIP generation, select bounded transfer batches without sorting the full queue, reuse directory handles during folder verification, and disconnect Discord DOM observation on post/profile pages.
+- Add unit regressions and a two-extension Chromium check covering hidden creator cards, old scan recovery, native image/MP4 transfer, optional ZIP extraction, actual folder writes, unchanged sync, thumbnail fallback and narrow UI layout.
+
+## 0.7.1 — 2026-10-18
+
+- Replace Unicode control/format characters such as emoji zero-width joiners in generated folder and file names, and keep emoji intact when shortening names. Trim whitespace and tildes that Chromium disallows at the ends of names.
+- Continue folder sync when an older ZIP contains a saved path rejected by the browser with “Name is not allowed.” Download the affected file at its newly sanitized path, update its history after saving, and keep other successful files reusable. Permission and unrelated filesystem errors still surface.
+- Preserve extracted-output history when matching sync entries are merged, reuse identical extracted outputs, and replace changed contents at stable paths so retries do not accumulate suffixed duplicate files.
+- Add regression coverage for Unicode names, truncated emoji, rejected legacy directories/files, successful recovery, and permission errors.
+
 ## 0.7.0 — 2026-10-16
 
 - List detected file extensions after scanning, including custom extensions, compound TAR formats and unknown files. Select or deselect each type; all are selected initially and new types stay selected during sync.

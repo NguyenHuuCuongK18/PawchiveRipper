@@ -14,7 +14,7 @@ export function isReadOnlyCommand(message: ServiceCommand): boolean {
 }
 export async function route(message: ServiceCommand, sender: chrome.runtime.MessageSender): Promise<unknown> {
   const folderPage = sender.id === chrome.runtime.id && sender.tab?.url?.split('#')[0] === chrome.runtime.getURL('folder/index.html');
-  if (sender.tab?.url && !supportedSite(sender.tab.url) && !folderPage) throw new Error('Archive Ripper works only on Kemono and Pawchive.');
+  if (sender.tab?.url && !supportedSite(sender.tab.url) && !folderPage) throw new Error('Pawchive Ripper works only on Kemono and Pawchive.');
   if (message.type === 'LOCAL_CLEAR') { await clearLocalData(message); return null; }
   if (message.type === 'LOCAL_STATUS' || message.type === 'LOCAL_SETTINGS') return cacheSettings(message);
   if (message.type === 'CACHE_LIST') return cacheList();

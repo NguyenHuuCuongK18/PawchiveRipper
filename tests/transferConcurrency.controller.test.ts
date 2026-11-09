@@ -53,6 +53,29 @@ it('starts text and images before large source files so archives do not block th
   expect((await getPostJob(value.id))!.tasks[0].status).toBe('queued');
 });
 
+it('tries a duplicate attachment on its alternate host before falling back to a thumbnail', async () => {
+  const value = postJob(2), alternate = value.tasks[0].url!.replace('n2.', 'n4.');
+  value.tasks[0].status = 'transferring'; value.tasks[0].attempts = 1;
+  value.tasks[0].alternateUrls = [alternate]; value.tasks[0].fallbackUrl = value.posts[0].media[0].thumbnailUrl!;
+  mocks.offscreen.mockImplementation(async action => action === 'post-transfer-status' ? { state: 'done', failure: 'File HTTP 404', status: 404 } : null);
+  await savePostJob(value); await tickPosts();
+  const saved = (await getPostJob(value.id))!;
+  expect(saved.tasks[0]).toMatchObject({ url: alternate, quality: 'full res', status: 'transferring', attempts: 1, alternateUrls: [] });
+  expect(saved.tasks[0].fallback).toBeUndefined();
+});
+
+it('waits for loose media before comparing archive entries against it', async () => {
+  const value = postJob(2); value.selection.deduplicate = true; value.tasks = value.tasks.slice(0, 2);
+  value.tasks[0].status = 'transferring'; value.tasks[0].attempts = 1;
+  value.tasks[1].kind = 'file'; value.tasks[1].status = 'staged'; value.tasks[1].bytes = 10;
+  value.tasks[1].extraction = { state: 'pending', files: [] };
+  await savePostJob(value); await tickPosts();
+  expect(mocks.offscreen.mock.calls.some(([action]) => action === 'post-extract-start')).toBe(false);
+  const saved = (await getPostJob(value.id))!; saved.tasks[0].status = 'staged'; saved.tasks[0].bytes = 10;
+  await savePostJob(saved); await tickPosts();
+  expect(mocks.offscreen.mock.calls.some(([action]) => action === 'post-extract-start')).toBe(true);
+});
+
 it('publishes byte progress for active files without counting them as collected', async () => {
   const value = postJob(2); value.tasks[0].status = 'transferring'; value.tasks[0].attempts = 1;
   const progress = { receivedBytes: 71_000_000, totalBytes: 243_387_914, phase: 'downloading', updatedAt: 100_000 };
