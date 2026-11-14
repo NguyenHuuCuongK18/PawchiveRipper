@@ -94,7 +94,7 @@ export function thumbnailFallback(task: PostTask, reason: string): PostTask | nu
   if (task.kind !== 'image' || task.quality !== 'full res' || !task.fallbackUrl || !safePostMediaUrl(task.fallbackUrl) || !isThumbnailUrl(task.fallbackUrl)) return null;
   const parts = relativePathParts(task.path), quality = parts.indexOf('full res');
   postRelativePath(task); parts[quality] = 'thumbnail';
-  return { ...task, id: task.id.replace(':full res:', ':thumbnail:'), quality: 'thumbnail', url: task.fallbackUrl, path: parts.join('/'), status: 'queued', bytes: null, attempts: 0, nextAt: 0, error: null, synced: false, fallback: true, fallbackReason: reason, fallbackChecked: false };
+  return { ...task, id: task.id.replace(':full res:', ':thumbnail:'), quality: 'thumbnail', url: task.fallbackUrl, path: parts.join('/'), status: 'queued', bytes: null, attempts: 0, nextAt: 0, error: null, synced: false, preservePath: false, fallback: true, fallbackReason: reason, fallbackChecked: false };
 }
 export function postZipJob(job: PostJob): PostJob {
   const base = creatorFolder(job);

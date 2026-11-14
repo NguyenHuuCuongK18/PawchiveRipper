@@ -1,12 +1,18 @@
 import '../ui/style.css';
 import { getDirectory, saveDirectory, type ArchiveDirectory, type DirectoryPickerWindow } from '../storage/destination';
 import type { Reply } from '../core/types';
-import type { PostCommand } from '../services/posts/types';
 import { creatorDirectory } from '../services/posts/destination';
 import { creatorFolder } from '../services/posts/media';
 import { assertSyncDirectory, canUseSyncDirectory, readSyncFile } from '../services/posts/syncDestination';
+import { discoverCreatorFolders } from '../services/posts/creatorSafety';
+import type { ServiceCommand } from '../services/router';
+import type { CreatorLibrary } from '../services/posts/library';
+import { creatorKey } from '../services/posts/library';
+import { postSourceUrl } from '../services/registry';
+import { firstSyncAccess } from './firstSyncAccess';
 
 const jobId = new URLSearchParams(location.hash.slice(1)).get('jobId');
+const restoreKey = new URLSearchParams(location.hash.slice(1)).get('creator');
 const status = document.getElementById('status')!;
 const button = document.getElementById('choose') as HTMLButtonElement;
 const allow = document.getElementById('allow') as HTMLButtonElement;
@@ -14,8 +20,9 @@ const back = document.getElementById('return') as HTMLButtonElement;
 const openSync = document.getElementById('open-sync') as HTMLButtonElement;
 const grantSync = document.getElementById('grant-sync') as HTMLButtonElement;
 const syncStep = document.getElementById('sync-step')!;
+if (new URLSearchParams(location.hash.slice(1)).get('mode') === 'sync') document.getElementById('heading')!.textContent = 'Connect an existing archive';
 button.disabled = true;
-async function send<T>(message: PostCommand): Promise<T> {
+async function send<T>(message: ServiceCommand): Promise<T> {
   const reply: Reply<T> = await chrome.runtime.sendMessage(message);
   if (!reply?.ok) throw new Error(reply?.error || 'The archive service did not respond.'); return reply.data;
 }
@@ -23,11 +30,38 @@ type Detail = ReturnType<typeof import('../services/posts/controller').postDetai
 let detail: Detail | undefined, saved: { id: string; handle: ArchiveDirectory } | undefined;
 let pendingSync: { file: FileSystemFileHandle } | undefined;
 void (async () => {
+  if (new URLSearchParams(location.hash.slice(1)).get('mode') === 'first-sync') {
+    document.querySelector<HTMLElement>('section[aria-label="Update an existing archive"]')!.hidden = true;
+    document.getElementById('folder-name')!.parentElement!.hidden = true;
+    allow.parentElement!.hidden = true;
+    document.getElementById('heading')!.textContent = 'Allow first-sync folders';
+    await firstSyncAccess(() => send<CreatorLibrary>({ type: 'LIBRARY_STATUS' }), key => send({ type: 'LIBRARY_FIRST_SYNC_ACCESS', key }));
+    return;
+  }
+  if (restoreKey) {
+    document.querySelector<HTMLElement>('section[aria-label="Update an existing archive"]')!.hidden = true;
+    document.getElementById('folder-name')!.parentElement!.hidden = true;
+    const creator = (await send<CreatorLibrary>({ type: 'LIBRARY_STATUS' })).creators.find(item => item.key === restoreKey);
+    const handle = creator && await getDirectory(creator.directoryId);
+    if (!creator || !handle) throw new Error('Folder disconnected. Connect the archive again.');
+    document.getElementById('heading')!.textContent = 'Allow folder access';
+    document.getElementById('creator')!.textContent = creator.creatorName;
+    button.hidden = openSync.hidden = true; saved = { id: creator.directoryId, handle }; allow.hidden = false;
+    return;
+  }
+  if (new URLSearchParams(location.hash.slice(1)).get('mode') === 'library') {
+    document.querySelector<HTMLElement>('section[aria-label="Update an existing archive"]')!.hidden = true;
+    document.getElementById('folder-name')!.parentElement!.hidden = true;
+    document.getElementById('permission-note')!.hidden = true;
+    document.getElementById('heading')!.textContent = 'Connect archive folders';
+    document.getElementById('creator')!.textContent = 'Choose your archive root. Only valid creator archives are connected. No files are changed.';
+    button.hidden = openSync.hidden = true;
+    return;
+  }
   if (!jobId) throw new Error('Open the folder chooser from the archive overlay.');
   detail = await send<Detail>({ type: 'POST_DETAIL', jobId });
   document.getElementById('creator')!.textContent = `${detail.job.creatorName} · ${detail.job.source.platform}`;
   document.getElementById('folder-name')!.textContent = creatorFolder(detail.job);
-  if (new URLSearchParams(location.hash.slice(1)).get('mode') === 'sync') document.getElementById('heading')!.textContent = 'Connect an existing archive';
   if (detail.job.destination?.kind === 'folder' && detail.job.destination.directoryId) {
     const handle = await getDirectory(detail.job.destination.directoryId);
     if (handle) { saved = { id: detail.job.destination.directoryId, handle }; allow.hidden = false; }
@@ -37,7 +71,7 @@ void (async () => {
 
 function busy(value: boolean): void { button.disabled = allow.disabled = openSync.disabled = grantSync.disabled = value; }
 function failed(error: unknown): void {
-  if (error instanceof Error && error.name === 'AbortError') { status.textContent = 'Selection cancelled. Your download is unchanged.'; return; }
+  if (error instanceof Error && error.name === 'AbortError') { status.textContent = 'Selection cancelled.'; return; }
   status.textContent = error instanceof Error ? error.message : 'Could not connect the folder. Try again.';
 }
 async function connect(handle: ArchiveDirectory, directoryId: string, sync = false): Promise<void> {
@@ -52,7 +86,7 @@ async function connect(handle: ArchiveDirectory, directoryId: string, sync = fal
     detail = await send<Detail>({ type: 'POST_DETAIL', jobId: jobId! });
     if (detail.job.status === 'paused') throw new Error(detail.job.error || 'The download is still paused. Try restoring access again.');
   }
-  status.textContent = resume ? 'Folder access confirmed. Download resumed. Keep this tab open until saving finishes.' : sync ? 'Sync connected. Your post scope is unchanged. Return to the creator to save your selected posts. Keep this tab open until saving finishes.' : 'Folder connected. Return to the creator to save. Keep this tab open until saving finishes.';
+  status.textContent = resume ? 'Download resumed. Keep this tab open.' : sync ? 'Sync connected. Return to the creator to save.' : 'Folder connected. Return to the creator to save.';
   syncStep.hidden = true; pendingSync = undefined;
   back.hidden = false;
   // Closing the last top-level extension tab can revoke a session-only filesystem grant.
@@ -60,7 +94,7 @@ async function connect(handle: ArchiveDirectory, directoryId: string, sync = fal
 button.onclick = () => {
   if (!jobId || !detail || button.disabled) return;
   const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
-  if (!picker) { status.textContent = 'This browser does not support folder access. Use a Chromium browser with the File System Access API enabled.'; return; }
+  if (!picker) { status.textContent = 'Folder access unsupported. Use Chrome or Edge.'; return; }
   // Invoke the native API directly during the click's top-level user gesture.
   busy(true); status.textContent = 'Waiting for folder selection…';
   void (async () => {
@@ -72,7 +106,7 @@ button.onclick = () => {
 openSync.onclick = () => {
   if (!jobId || !detail || openSync.disabled) return;
   const picker = (window as DirectoryPickerWindow).showOpenFilePicker;
-  if (!picker) { status.textContent = 'This browser does not support choosing an archive file. Choose the creator folder instead.'; return; }
+  if (!picker) { status.textContent = 'File picker unsupported. Choose the creator folder.'; return; }
   pendingSync = undefined; syncStep.hidden = true; allow.hidden = !saved;
   busy(true); status.textContent = 'Waiting for sync.json…';
   void (async () => {
@@ -85,7 +119,7 @@ openSync.onclick = () => {
     }
     document.getElementById('sync-description')!.textContent = `${file.name} · ${index.posts.length} saved posts · ${index.creatorName}`;
     syncStep.hidden = false; allow.hidden = true;
-    status.textContent = 'History found. Click Allow archive folder to connect this archive.';
+    status.textContent = 'History found. Allow folder access to continue.';
   })().catch(failed).finally(() => busy(false));
 };
 grantSync.onclick = () => {
@@ -107,7 +141,12 @@ allow.onclick = () => {
   busy(true); status.textContent = 'Waiting for folder access…';
   void (async () => {
     const permission = await handle.requestPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') throw new Error('Folder access was declined. Allow access or choose the creator folder again.');
+    if (permission !== 'granted') throw new Error('Folder access was declined. Try Allow access again.');
+    if (restoreKey) {
+      await send({ type: 'LIBRARY_REAUTHORIZE', key: restoreKey });
+      status.textContent = 'Access allowed. Keep this tab open while saving.';
+      return;
+    }
     await connect(handle, id);
   })().catch(failed).finally(() => busy(false));
 };
@@ -115,8 +154,33 @@ back.onclick = () => {
   void (async () => {
     const current = await chrome.tabs.getCurrent();
     const tab = current?.openerTabId !== undefined ? await chrome.tabs.get(current.openerTabId).catch(() => undefined) : undefined;
-    if (!tab?.id) { status.textContent = 'Return to the creator tab manually. Keep this folder access tab open until saving finishes.'; return; }
+    if (!tab?.id) { status.textContent = 'Return to the creator tab. Keep this tab open.'; return; }
     await chrome.tabs.update(tab.id, { active: true });
     if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
   })().catch(failed);
+};
+const importRoot = document.createElement('button');
+importRoot.textContent = 'Choose archive root (read only)';
+importRoot.hidden = new URLSearchParams(location.hash.slice(1)).get('mode') === 'first-sync';
+document.querySelector('main')!.append(importRoot);
+importRoot.onclick = () => {
+  const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
+  if (!picker) { status.textContent = 'Folder access is not available in this browser.'; return; }
+  importRoot.disabled = true;
+  const picked = picker.call(window, { id: 'creator-library-root', mode: 'read' });
+  void (async () => {
+    const root = await picked, entries = await discoverCreatorFolders(root);
+    const library = await send<CreatorLibrary>({ type: 'LIBRARY_STATUS' });
+    let imported = 0, skipped = 0;
+    for (const entry of entries) {
+      const registered = library.creators.find(item => item.key === creatorKey(entry.source));
+      const existing = registered && await getDirectory(registered.directoryId);
+      if (existing && !await existing.isSameEntry(entry.directory)) { skipped++; continue; }
+      const id = registered?.directoryId || crypto.randomUUID();
+      await saveDirectory(id, entry.directory);
+      await send({ type: 'LIBRARY_REGISTER', url: postSourceUrl(entry.source), directoryId: id, name: entry.directory.name, creatorName: entry.index.creatorName, selection: entry.index.selection, selectedPostIds: entry.index.scope?.selectedPostIds });
+      imported++;
+    }
+    status.textContent = `${imported} creator${imported === 1 ? '' : 's'} connected${skipped ? ` · ${skipped} conflicts skipped` : ''}. Files unchanged.`;
+  })().catch(failed).finally(() => { importRoot.disabled = false; });
 };

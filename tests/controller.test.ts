@@ -3,7 +3,7 @@ import { afterEach, it, expect, vi } from 'vitest';
 import { command, tick } from '../src/background/controller';
 import { getJob } from '../src/storage/database';
 import { scope } from './helpers';
-import server from './fixtures/server.sanitized.json';
+import server from './fixtures/server.synthetic.json';
 const url = `https://kemono.cr/discord/server/${scope.serverId}/${scope.channelId}`;
 afterEach(() => vi.unstubAllGlobals());
 it('scans the current channel when discovery fails, preserves rate-limit checkpoints, and resumes the same offset', async () => {

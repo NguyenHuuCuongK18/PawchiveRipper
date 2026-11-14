@@ -6,7 +6,7 @@ import { normalizePost, createTasks } from '../src/services/posts/media';
 import { emptySync, recordSaved } from '../src/services/posts/sync';
 import type { ApiPost, PostJob } from '../src/services/posts/types';
 
-const post: ApiPost = { id: '100', user: '19875180', service: 'patreon', content: 'Saved list text', attachments: [], detail_fetched: true };
+const post: ApiPost = { id: '100', user: '20002', service: 'patreon', content: 'Saved list text', attachments: [], detail_fetched: true };
 function job(): PostJob {
   const source = { origin: 'https://pawchive.pw', platform: 'patreon' as const, creatorId: post.user, postId: null };
   return { id: 'tolerance', service: 'posts', source, sourceUrl: `${source.origin}/patreon/user/${post.user}`, creatorName: 'Creator', createdAt: '', updatedAt: '',

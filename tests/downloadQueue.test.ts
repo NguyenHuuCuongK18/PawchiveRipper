@@ -1,5 +1,5 @@
 import { beforeEach, it, expect, vi } from 'vitest';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { scope, job } from './helpers';
 const mocks = vi.hoisted(() => ({ offscreen: vi.fn(), release: vi.fn(), saveMedia: vi.fn(), fileMatches: vi.fn() }));
@@ -10,7 +10,7 @@ import { FolderPermissionError } from '../src/storage/destination';
 import { ZipStorageError } from '../src/storage/zipCache';
 import { reconcileImage, startImage } from '../src/background/downloadQueue';
 const download = vi.fn(), search = vi.fn();
-const image = { blobUrl: 'blob:chrome-extension://test/image', ext: 'png', mime: 'image/png', bytes: 55959, width: 800, height: 593, sha256: 'eb1d7a6022f5772f1e7b8cf8d94223b271601c43dc15b29ef6899d5f7aadab43' };
+const image = { blobUrl: 'blob:chrome-extension://test/image', ext: 'png', mime: 'image/png', bytes: 55959, width: 800, height: 593, sha256: '00000000000000000000000000000000000000000000000000000000000001db' };
 beforeEach(() => {
   vi.clearAllMocks(); download.mockResolvedValue(42); mocks.release.mockResolvedValue(undefined); mocks.saveMedia.mockResolvedValue(undefined);
   vi.stubGlobal('chrome', { downloads: { download, search }, permissions: { contains: vi.fn().mockResolvedValue(true) } });

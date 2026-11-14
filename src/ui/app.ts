@@ -8,6 +8,10 @@ import { creatorFolder } from '../services/posts/media';
 import type { CacheMaintenanceSettings } from '../storage/database';
 import type { CacheItem, CacheList } from '../services/cacheMaintenance';
 import { transferCeiling, type TransferPolicy } from '../core/transferConcurrency';
+import type { CreatorLibraryStatus, LibraryMode } from '../services/posts/library';
+import { needsFirstSyncAccess } from '../services/posts/library';
+import { getDirectory } from '../storage/destination';
+import { batchStatus, creatorScope, creatorStatus, folderAccess, libraryMode, modeHelp, type FolderAccess } from './libraryPresentation';
 
 type PostView = ReturnType<typeof import('../services/posts/controller').postDetail>;
 type DiscordView = { job: Omit<Job, 'channels'> & { channels: (Job['channels'][number] & { messageCount?: number })[] }; originalOrigins: string[]; hasDiscordCdn: boolean; totals: Summary };
@@ -18,7 +22,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <nav aria-label="Saving service"><span id="posts-service">Posts</span><span id="discord-service">Discord</span></nav>
     <section class="target"><h1 id="title">Reading this page…</h1><p id="subtitle" class="muted"></p><label for="scope" class="sr-only">What to save</label><select id="scope" hidden></select></section>
     <p id="notice" class="notice" role="status" hidden></p>
-    <div id="media-refresh" class="notice" hidden><p>This job used an older media scanner. Refresh it to detect images and videos that may have been missed.</p><button id="refresh-media" type="button">Refresh scan</button></div>
+    <details id="creator-library"><summary>Creators &amp; sync</summary>
+      <label class="library-mode-label" for="library-mode">Auto sync</label><select id="library-mode" aria-describedby="library-mode-help"><option value="off">Off</option><option value="check">Check only</option><option value="sync">Auto sync</option></select>
+      <p id="library-mode-help" class="muted"></p><p id="library-schedule" class="small muted" hidden>Every 30 minutes while Pawchive or Kemono is open.</p>
+      <div class="library-toolbar"><button id="import-library" type="button">Connect archive folders</button><button id="library-allow-first" type="button" hidden>Allow first-sync folders</button></div>
+      <p id="library-status" class="muted" role="status"></p><div class="library-toolbar"><button id="library-select-all" type="button">Select all</button><button id="library-select-none" type="button">Clear selection</button></div>
+      <div class="library-toolbar"><button id="library-check" type="button">Check selected</button><button id="library-sync" type="button">Sync selected</button><button id="library-stop" type="button" hidden>Stop</button></div>
+      <p class="small muted">Check recent posts. Sync saves missing or changed files.</p><p id="library-batch-status" class="small muted" role="status" hidden></p><ul id="library-creators"></ul></details>
+    <div id="media-refresh" class="notice" hidden><p>Refresh this older scan to find missed media.</p><button id="refresh-media" type="button">Refresh scan</button></div>
     <button id="scan-new" class="primary full" hidden>Scan this page</button>
     <section id="work" hidden>
       <div class="progress-heading"><span id="progress-label">Discovering posts</span><strong id="percent">0%</strong></div>
@@ -27,9 +38,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div id="types" class="content-types"><label id="images-option"><input id="images" type="checkbox" checked>Images</label><label id="files-option" hidden><input id="files" type="checkbox" checked>Other files</label><label><input id="text" type="checkbox" checked>Post text</label></div>
         <label id="fallback-option" class="fallback-option" hidden><input id="fallback" type="checkbox" checked>Save thumbnail if unavailable</label><p id="quality-note" class="small muted"></p>
         <details id="file-types" hidden><summary>File types</summary><div class="actions"><button id="all-file-types" type="button">All types</button><button id="clear-file-types" type="button">Clear types</button></div><div id="file-type-options" class="content-types"></div></details>
-        <label id="extract-option" class="fallback-option" hidden><input id="extract-archives" type="checkbox">Extract downloaded archives (ZIP, 7z, RAR, TAR)</label><p id="extract-note" class="small muted" hidden>Successful extraction keeps only the unpacked contents. If extraction fails, the compressed file is kept.</p>
-        <label id="duplicate-option" class="fallback-option" hidden><input id="deduplicate" type="checkbox" checked>Avoid exact duplicates</label><p id="duplicate-note" class="small muted" hidden>Download identical attachments once. With extraction enabled, byte-identical contents share one saved copy. Different edits and translations are kept. See duplicates.json for shared file locations.</p>
-        <details id="archive-choices" hidden><summary>Archives &amp; versions</summary><p class="small muted">Choose ZIPs and other archives before downloading. Similar names can contain different translations or edits.</p><input id="archive-search" type="search" placeholder="Find an archive or post" aria-label="Find an archive or post"><div class="actions"><button id="all-archives" type="button">Select all archives</button><button id="clear-archives" type="button">Clear archives</button></div><p id="archive-count" class="small muted"></p><div id="archive-rows" class="archive-list"></div></details>
+        <label id="extract-option" class="fallback-option" hidden><input id="extract-archives" type="checkbox">Extract archives (ZIP, 7z, RAR, TAR)</label><p id="extract-note" class="small muted" hidden></p>
+        <label id="duplicate-option" class="fallback-option" hidden><input id="deduplicate" type="checkbox" checked>Avoid exact duplicates</label><p id="duplicate-note" class="small muted" hidden>Save identical files once. Different versions stay separate.</p>
+        <details id="archive-choices" hidden><summary>Archives &amp; versions</summary><p class="small muted">Choose which archives to save.</p><input id="archive-search" type="search" placeholder="Find an archive or post" aria-label="Find an archive or post"><div class="actions"><button id="all-archives" type="button">Select all archives</button><button id="clear-archives" type="button">Clear archives</button></div><p id="archive-count" class="small muted"></p><div id="archive-rows" class="archive-list"></div></details>
         <div id="post-storage" hidden><div id="destination-label" class="small">Save to</div><div id="destination" class="destination-switch" role="radiogroup" aria-labelledby="destination-label" aria-describedby="folder-note"><label><input id="destination-folder" type="radio" name="destination" value="folder" checked><span>Creator folder</span></label><label><input id="destination-zip" type="radio" name="destination" value="zip"><span>ZIP file</span></label></div><div class="actions"><button id="choose-sync" type="button">Choose sync.json</button><button id="choose-folder" type="button">Change folder</button></div><p id="folder-note" class="small muted">Choose where to save this creator.</p></div>
       </fieldset>
       <button id="download" class="primary full" disabled>Download ZIP</button>
@@ -37,8 +48,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <details id="post-list" hidden><summary id="post-list-label">Posts</summary><p id="post-selection-count" class="small muted"></p><fieldset id="post-picker"><legend class="sr-only">Posts to save</legend><div id="post-selection-actions" class="actions"><label><input id="all-posts" type="checkbox" checked>All posts</label><button id="clear-post-selection" type="button">Clear selection</button></div><ul id="posts"></ul></fieldset><button id="more" hidden>Show more</button></details>
       <details id="more-options"><summary>More options</summary><p id="transfer-policy" class="small muted"></p><div class="actions"><button id="rescan">Scan again</button><button id="import-sync" type="button">Import history only</button><button id="manifest">Export manifest</button></div><input id="sync-file" type="file" accept=".json,application/json" hidden></details>
     </section><details id="recent" hidden><summary>Recent jobs</summary><ul id="jobs"></ul></details>
-    <details id="local-data"><summary>Storage &amp; history</summary><p id="local-data-count" class="small muted"></p><p class="small muted">Clear extension data to free space. Downloaded files, archive folders, and their sync.json files stay on disk.</p>
-      <div class="cache-settings"><label><input id="clear-after-download" type="checkbox">Clear temporary data after a successful ZIP download</label><p class="small muted">Keeps the downloaded ZIP and job history. Another export will need to download the files again.</p><label><input id="auto-cleanup" type="checkbox" checked>Automatically clean unused ZIP data</label><label class="retention-label" for="cache-retention">Remove after <input id="cache-retention" type="number" min="1" max="10" step="1" value="5"> minutes without use</label><p class="small muted">Checks every minute. Active saves and paused downloads are kept.</p><p id="cleanup-status" class="small muted" role="status"></p></div>
+    <details id="local-data"><summary>Storage &amp; history</summary><p id="local-data-count" class="small muted"></p><p class="small muted">Cleanup keeps your saved archives.</p>
+      <div class="cache-settings"><label><input id="clear-after-download" type="checkbox">Clear cache after saving a ZIP</label><p class="small muted">Exporting again will re-download files.</p><label><input id="auto-cleanup" type="checkbox" checked>Auto-clean unused ZIP cache</label><label class="retention-label" for="cache-retention">Remove after <input id="cache-retention" type="number" min="1" max="10" step="1" value="5"> idle minutes</label><p class="small muted">Active and paused jobs are kept.</p><p id="cleanup-status" class="small muted" role="status"></p></div>
       <div class="cache-heading"><strong>Temporary caches</strong><button id="refresh-caches" type="button">Refresh</button></div><p id="cache-summary" class="small muted" role="status">Open this section to check temporary storage.</p><ul id="caches" class="cache-list"></ul><button id="more-caches" type="button" hidden>Show more caches</button>
       <div class="actions"><button id="clear-cache" hidden>Clear this ZIP cache</button><button id="clear-job" hidden>Remove this job</button><button id="clear-all">Clear all extension data</button></div>
       <section id="clear-confirm" class="clear-confirm" aria-label="Confirm data cleanup" hidden><p id="clear-description"></p><div class="actions"><button id="confirm-clear" class="danger">Clear data</button><button id="cancel-clear">Cancel</button></div></section>
@@ -59,6 +70,84 @@ let cacheRequest: Promise<void> | null = null, postRowsKey = '';
 let postErrorNotice = '';
 let excludedFileTypes = new Set<string>(), fileTypesKey = '';
 let excludedAttachmentIds = new Set<string>(), archiveRowsKey = '';
+let libraryRowsKey = '', libraryRefreshedAt = 0;
+const libraryPermissions = new Map<string, { checkedAt: number; access: FolderAccess }>();
+async function refreshLibrary(forceAccess = false): Promise<void> {
+  const library = await send<CreatorLibraryStatus>({ type: 'LIBRARY_STATUS' }), mode = libraryMode(library);
+  select('library-mode').value = mode;
+  el('library-mode-help').textContent = modeHelp[mode];
+  el('library-schedule').hidden = mode === 'off';
+  const selectedCount = library.creators.filter(creator => creator.enabled).length, batching = library.batch?.status === 'running';
+  el('library-status').textContent = `${library.creators.length} creator${library.creators.length === 1 ? '' : 's'} · ${selectedCount} selected`;
+  for (const id of ['library-check', 'library-sync']) el<HTMLButtonElement>(id).disabled = batching || !selectedCount;
+  for (const id of ['library-select-all', 'library-select-none', 'import-library']) el<HTMLButtonElement>(id).disabled = batching || !library.creators.length && id !== 'import-library';
+  el('library-stop').hidden = !batching;
+  el('library-batch-status').textContent = batchStatus(library.batch); el('library-batch-status').hidden = !library.batch;
+  if (!el<HTMLDetailsElement>('creator-library').open) { libraryRefreshedAt = Date.now(); return; }
+  const accesses = await Promise.all(library.creators.map(async creator => {
+    const cached = libraryPermissions.get(creator.directoryId);
+    if (!forceAccess && cached && Date.now() - cached.checkedAt < 30000) return cached.access;
+    let access: FolderAccess;
+    try { const handle = await getDirectory(creator.directoryId); access = handle ? await handle.queryPermission({ mode: 'readwrite' }) : 'missing'; }
+    catch { access = 'unknown'; }
+    libraryPermissions.set(creator.directoryId, { checkedAt: Date.now(), access }); return access;
+  }));
+  const firstAccessCount = library.creators.filter((creator, index) => needsFirstSyncAccess(creator, accesses[index])).length;
+  el('library-allow-first').hidden = !firstAccessCount; el<HTMLButtonElement>('library-allow-first').disabled = batching;
+  el('library-allow-first').textContent = `Allow first-sync folders (${firstAccessCount})`;
+  const key = JSON.stringify([library, accesses]);
+  if (key !== libraryRowsKey) {
+    libraryRowsKey = key;
+    const opened = new Set([...el('library-creators').querySelectorAll<HTMLDetailsElement>('.library-info[open]')].map(details => details.parentElement?.dataset.creatorKey));
+    el('library-creators').replaceChildren(...library.creators.map((creator, index) => {
+      const row = document.createElement('li'), label = document.createElement('label'), input = document.createElement('input'), name = document.createElement('strong');
+      row.className = 'library-card'; row.dataset.creatorKey = creator.key;
+      input.type = 'checkbox'; input.checked = creator.enabled; input.disabled = batching;
+      input.setAttribute('aria-label', `Select ${creator.creatorName}`);
+      input.onchange = () => void run(async () => { await send({ type: 'LIBRARY_AUTO', key: creator.key, enabled: input.checked }); await refreshLibrary(); });
+      name.textContent = creator.creatorName; label.className = 'library-creator'; label.append(input, name);
+      const meta = document.createElement('p'); meta.className = 'small muted';
+      meta.textContent = `${new URL(creator.source.origin).hostname} · ${creator.source.platform} · ${creatorScope(creator)}${creator.enabled ? '' : ' · Not selected'}`;
+      const folder = document.createElement('p'); folder.className = 'library-folder small muted'; folder.textContent = `Folder: ${creator.folderName}`;
+      const currentRun = creator.runId ? library.runs[creator.runId] : undefined, status = creatorStatus(creator, currentRun);
+      if (batching && library.batch!.pending.includes(creator.key)) { status.title = 'Queued'; status.detail = ''; status.tone = 'normal'; }
+      else if (batching && library.batch!.active?.key === creator.key && !library.batch!.active.runId) { status.title = library.batch!.action === 'check' ? 'Checking' : 'Starting sync'; status.detail = ''; status.tone = 'active'; }
+      const heading = document.createElement('p'), info = document.createElement('p');
+      heading.className = 'library-result'; heading.dataset.tone = status.tone; heading.textContent = status.title;
+      info.className = 'library-detail muted'; info.textContent = status.detail; info.hidden = !status.detail;
+      const times = document.createElement('p'); times.className = 'small muted library-times';
+      for (const [caption, at] of [['Checked', creator.checkedAt], ['Full scan', creator.fullCheckedAt], ['Synced', creator.syncedAt]] as const) {
+        const time = document.createElement('span'); time.textContent = `${caption}: ${at ? new Date(at).toLocaleString() : 'Never'}`; times.append(time);
+      }
+      const permission = folderAccess(accesses[index]), accessNote = document.createElement('p'); accessNote.className = 'small muted'; accessNote.textContent = permission.text; accessNote.hidden = !permission.text || permission.text === status.title;
+      const details = document.createElement('details'), summary = document.createElement('summary'); details.className = 'library-info'; details.open = opened.has(creator.key); summary.textContent = 'Details'; details.append(summary, info, folder, times);
+      if (currentRun?.status === 'paused' && currentRun.error && currentRun.error !== status.detail) {
+        const issue = document.createElement('p'); issue.className = 'small muted'; issue.textContent = `Paused job: ${currentRun.error}`; details.append(issue);
+      }
+      const actions = document.createElement('div'); actions.className = 'library-actions';
+      if (permission.action) {
+        const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = permission.action;
+        restore.onclick = () => { void chrome.tabs.create({ url: chrome.runtime.getURL(accesses[index] === 'missing' ? 'folder/index.html#mode=library' : 'folder/index.html#creator=' + encodeURIComponent(creator.key)) }); };
+        actions.append(restore);
+      }
+      if (currentRun) {
+        const view = document.createElement('button'); view.type = 'button'; view.textContent = 'View job';
+        view.onclick = () => void run(async () => {
+          cleanup = null; el('clear-confirm').hidden = true; service = 'posts'; selected = creator.runId!;
+          sourceUrl = `${creator.source.origin}/${creator.source.platform}/user/${creator.source.creatorId}${creator.source.postId ? '/post/' + creator.source.postId : ''}`;
+          limit = 100; optionsJob = null; select('scope').hidden = true;
+          el('posts-service').classList.add('active'); el('discord-service').classList.remove('active');
+          await refresh(); el('work').scrollIntoView({ block: 'start' });
+        });
+        actions.append(view);
+      }
+      const visit = document.createElement('button'); visit.type = 'button'; visit.textContent = creator.source.postId ? 'Open post' : 'Open creator';
+      visit.onclick = () => { void chrome.tabs.create({ url: `${creator.source.origin}/${creator.source.platform}/user/${creator.source.creatorId}${creator.source.postId ? '/post/' + creator.source.postId : ''}` }); };
+      actions.append(visit); row.append(label, meta, heading, accessNote, actions, details); return row;
+    }));
+  }
+  libraryRefreshedAt = Date.now();
+}
 async function send<T>(message: ServiceCommand): Promise<T> {
   const reply: Reply<T> = await chrome.runtime.sendMessage(message);
   if (!reply?.ok) throw new Error(reply?.error || 'The archive service did not respond.'); return reply.data;
@@ -70,6 +159,13 @@ async function run(work: () => Promise<void>): Promise<void> {
   finally { busy = false; document.body.classList.remove('busy'); queueRefresh(); }
 }
 function close(): void { if (window.parent !== window) window.parent.postMessage({ type: 'ARCHIVE_OVERLAY_CLOSE' }, '*'); else window.close(); }
+select('library-mode').onchange = () => void run(async () => { await send({ type: 'LIBRARY_MODE', mode: select('library-mode').value as LibraryMode }); await refreshLibrary(); });
+for (const [id, selected] of [['library-select-all', true], ['library-select-none', false]] as const) el(id).onclick = () => void run(async () => { await send({ type: 'LIBRARY_SELECT', selected }); await refreshLibrary(); });
+for (const action of ['check', 'sync'] as const) el(`library-${action}`).onclick = () => void run(async () => { await send({ type: 'LIBRARY_BATCH', action }); await refreshLibrary(); });
+el('library-stop').onclick = () => void run(async () => { await send({ type: 'LIBRARY_STOP' }); await refreshLibrary(); });
+el('creator-library').addEventListener('toggle', () => { if (el<HTMLDetailsElement>('creator-library').open) void refreshLibrary(true).catch(error => notice(String(error))); });
+el('import-library').onclick = () => { void chrome.tabs.create({ url: chrome.runtime.getURL('folder/index.html#mode=library') }); };
+el('library-allow-first').onclick = () => { void chrome.tabs.create({ url: chrome.runtime.getURL('folder/index.html#mode=first-sync') }); };
 el('close').onclick = close; document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
 function progress(label: string, value: number | null, count: string): void {
   el('progress-label').textContent = label; const bar = el<HTMLProgressElement>('progress');
@@ -132,8 +228,8 @@ function options(): void {
   if (check('destination-zip').disabled) setDestination('folder');
   el('choose-folder').hidden = destination() !== 'folder' || post?.job.destination?.kind !== 'folder' || !post.job.destination.directoryId;
   el('choose-folder').textContent = post?.job.error?.startsWith('Folder access is required.') ? 'Restore folder access' : 'Change folder';
-  el('folder-note').textContent = destination() === 'zip' ? 'Includes sync.json for future folder updates.' : post?.job.destination?.kind === 'folder' && post.job.destination.name ? `${post.job.destination.name}${post.totals.syncPosts ? ' · Sync updates this folder.' : ''}` : post ? `Creates ${creatorFolder(post.job)}/, or updates an existing archive.` : 'Choose where to save this creator.';
-  el('quality-note').textContent = service === 'posts' ? check('images').checked && check('fallback').checked ? 'Full resolution by default. Missing originals use thumbnails, saved separately.' : 'Full resolution. Unavailable originals are reported.' : thumbnail ? 'Save surviving image previews.' : 'Only available originals can be saved.';
+  el('folder-note').textContent = destination() === 'zip' ? 'Includes sync.json for future updates.' : post?.job.destination?.kind === 'folder' && post.job.destination.name ? post.job.destination.name : post ? `Folder: ${creatorFolder(post.job)}` : 'Choose a creator folder.';
+  el('quality-note').textContent = service === 'posts' ? check('images').checked && check('fallback').checked ? 'Full size; thumbnails when unavailable.' : 'Full size only.' : thumbnail ? 'Save image previews.' : 'Save available originals.';
   const subset = post && !post.allPostsSelected;
   el('download').textContent = service === 'posts' && destination() === 'folder' ? post?.job.destination?.kind === 'folder' && post.job.destination.directoryId ? post.job.source.postId ? 'Save this post' : subset ? 'Save selected posts' : post.totals.syncPosts ? 'Sync folder' : 'Save to folder' : 'Choose save location' : service === 'posts' && post?.job.source.postId ? 'Save this post as ZIP' : service === 'posts' && subset ? 'Download selected posts as ZIP' : 'Download ZIP';
 }
@@ -147,7 +243,7 @@ function renderCacheSettings(settings: CacheMaintenanceSettings): void {
   check('cache-retention').disabled = !settings.retentionMinutes;
   if (settings.retentionMinutes) check('cache-retention').value = String(settings.retentionMinutes);
   el('cleanup-status').textContent = !settings.retentionMinutes && !settings.clearAfterDownload ? 'Automatic cleanup is off.' : settings.lastCheckAt
-    ? `Last check: ${new Date(settings.lastCheckAt).toLocaleTimeString()} · ${settings.removedCaches} temporary caches removed.` : 'Automatic cleanup is on. The first check runs shortly.';
+    ? `Checked ${new Date(settings.lastCheckAt).toLocaleTimeString()} · ${settings.removedCaches} caches removed` : 'Auto cleanup on.';
 }
 async function updateCacheSettings(): Promise<void> {
   const minutes = Number(check('cache-retention').value);
@@ -166,7 +262,7 @@ function formatBytes(bytes: number): string {
 }
 function confirmCacheRemoval(jobId: string, title: string): void {
   cleanup = { scope: 'cache', jobId };
-  el('clear-description').textContent = `Remove temporary data for “${title}”? Downloaded files and job history stay on disk. Another ZIP export will need to download the files again.`;
+  el('clear-description').textContent = `Clear cache for “${title}”? Saved files and history stay. Exporting again will re-download files.`;
   el('confirm-clear').textContent = 'Remove cache'; el('clear-confirm').hidden = false;
   el('clear-confirm').scrollIntoView({ block: 'nearest' }); el('confirm-clear').focus();
 }
@@ -178,7 +274,7 @@ function renderCaches(): void {
     meta.textContent = `${cache.service === 'orphan' ? 'Unused' : cache.service === 'posts' ? 'Posts' : 'Discord'} · ${formatBytes(cache.bytes)} · ${cache.files} files${cache.lastUsedAt ? ` · Last used ${new Date(cache.lastUsedAt).toLocaleTimeString()}` : ''}${cache.protected ? ' · In use or paused' : ''}${cache.error ? ' · Size may be incomplete' : ''}`;
     button.type = 'button'; button.textContent = 'Remove'; button.disabled = cache.protected;
     button.setAttribute('aria-label', `Remove cache for ${cache.title}`);
-    if (cache.protected) button.title = 'Finish or cancel this job to remove its temporary data.';
+    if (cache.protected) button.title = 'Finish or cancel this job first.';
     button.onclick = () => confirmCacheRemoval(cache.id, cache.title);
     info.append(title, meta); row.append(info, button); return row;
   }));
@@ -253,8 +349,8 @@ function confirmCleanup(scope: 'job' | 'all'): void {
   if (scope === 'job' && !selected) return;
   cleanup = scope === 'all' ? { scope } : { scope, jobId: selected! };
   el('clear-description').textContent = scope === 'all'
-    ? 'Stop all jobs and remove all extension history, cached files, imported sync history, and saved folder connections? Your downloaded archives and sync.json files stay on disk.'
-    : 'Stop this job and remove its history and cached files? Its folder connection is forgotten if no other job uses it. Your downloaded archives and sync.json files stay on disk.';
+    ? 'Stop all jobs and clear history, cache and folder connections? Saved archives stay on disk.'
+    : 'Remove this job and its cache? Saved archives and creator connections stay.';
   el('confirm-clear').textContent = scope === 'all' ? 'Clear all extension data' : 'Remove this job';
   el('clear-confirm').hidden = false; el('confirm-clear').focus();
 }
@@ -270,7 +366,7 @@ el('confirm-clear').onclick = () => void run(async () => {
   await recentJobs();
   if (target.scope === 'all') renderCacheSettings(await send<CacheMaintenanceSettings>({ type: 'LOCAL_STATUS' }));
   await refreshCaches(true);
-  notice(target.scope === 'all' ? 'Extension data cleared. Your downloaded files are unchanged.' : target.scope === 'cache' ? 'Temporary cache removed. Downloaded files and job history are kept.' : 'Job and cached files removed. Your downloaded files are unchanged.');
+  notice(target.scope === 'all' ? 'Extension data cleared. Saved files kept.' : target.scope === 'cache' ? 'Cache cleared.' : 'Job removed. Saved files kept.');
 });
 select('scope').onchange = () => void run(async () => {
   if (!context) return; const scope = parsePostUrl(context.url);
@@ -307,7 +403,7 @@ el('more').onclick = () => void run(async () => { limit += 100; });
 function common(status: string, archive: Job['archive'], failed: number, canDownload: boolean, policy?: TransferPolicy): void {
   const active = ['scanning', 'downloading'].includes(status), saving = archive?.state === 'saving';
   const limit = Math.min(policy?.limit || 2, transferCeiling(service === 'posts' ? 'posts' : 'discord'));
-  el('transfer-policy').textContent = `Download speed adjusts automatically. Current limit: ${limit} ${limit === 1 ? 'file' : 'files'} at once.`;
+  el('transfer-policy').textContent = `Auto speed · ${limit} ${limit === 1 ? 'file' : 'files'} at once`;
   el<HTMLFieldSetElement>('options').disabled = active || saving; el<HTMLButtonElement>('download').disabled = !canDownload || active || saving;
   el('pause').hidden = !active; el('resume').hidden = status !== 'paused'; el('cancel').hidden = !active && status !== 'paused' && !saving;
   el('skip').hidden = service !== 'posts' || !post?.canSkipError;
@@ -315,7 +411,7 @@ function common(status: string, archive: Job['archive'], failed: number, canDown
   el<HTMLButtonElement>('retry').disabled = active || saving;
   el('save-zip').hidden = !archive || archive.cacheCleared === true || !['ready', 'saved'].includes(archive.state); el('clear-cache').hidden = !archive || archive.cacheCleared === true;
   el('archive-note').hidden = !archive?.cacheCleared;
-  el('archive-note').textContent = archive?.cacheCleared ? 'ZIP saved. Temporary copy cleared; downloading again creates a new ZIP.' : '';
+  el('archive-note').textContent = archive?.cacheCleared ? 'ZIP saved. Cache cleared.' : '';
   el('clear-job').hidden = !selected;
   el('manifest').hidden = service === 'posts';
   el<HTMLButtonElement>('clear-cache').disabled = active || saving || status === 'paused'; el<HTMLButtonElement>('rescan').disabled = active || saving;
@@ -331,13 +427,14 @@ function downloadProgress(archive: Job['archive'], saved: number, processed: num
   progress(label, value, `${archive?.state === 'saved' ? 'Saved' : 'Collected'}: ${saved}/${total} files${failed ? ` · ${failed} unavailable` : ''}`);
 }
 function renderPost(view: PostView): void {
+  el('extract-note').textContent = view.job.selection.keepArchives ? 'Keep originals after extraction.' : 'Remove originals only after verifying extracted files.';
   el('media-refresh').hidden = !view.needsMediaRescan || ['scanning', 'downloading'].includes(view.job.status) || view.job.archive?.state === 'saving';
   const { job, totals } = view;
   const transferText = job.status === 'downloading' ? view.activeTransfers.slice(0, 3).map(({ name, progress }) => {
     if (!progress || progress.phase === 'connecting') return `Connecting: ${name}`;
     if (progress.phase === 'validating') return `Checking: ${name} · ${formatBytes(progress.receivedBytes)}`;
     return `${name}: ${formatBytes(progress.receivedBytes)}${progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ''}${Date.now() - progress.updatedAt > 30_000 ? ' · Waiting for data' : ''}`;
-  }).join(' · ') || (view.retryAt > Date.now() ? `Waiting to retry in ${Math.ceil((view.retryAt - Date.now()) / 1000)} seconds.` : '') : '';
+  }).join(' · ') || (view.retryAt > Date.now() ? `Retry in ${Math.ceil((view.retryAt - Date.now()) / 1000)}s` : '') : '';
   el('transfer-progress').textContent = transferText; el('transfer-progress').hidden = !transferText;
   if (sourceUrl !== job.sourceUrl) { sourceUrl = job.sourceUrl; select('scope').value = job.source.postId ? 'post' : 'profile'; }
   el('title').textContent = job.source.postId ? view.posts[0]?.title || 'This post' : job.creatorName;
@@ -355,12 +452,12 @@ function renderPost(view: PostView): void {
   if (totals.thumbnails) el('summary').textContent += ` · ${totals.thumbnails} saved as thumbnails`;
   if (totals.extracting) el('summary').textContent += ' · Extracting archives';
   if (totals.extracted) el('summary').textContent += ` · ${totals.extracted} unpacked files`;
-  if (totals.extractionFailures) el('summary').textContent += ` · ${totals.extractionFailures} extraction errors (originals kept; see failures.json)`;
-  if (totals.discoveryFailures) el('summary').textContent += `${el('summary').textContent ? ' · ' : ''}${totals.discoveryFailures} discovery errors. Available content can be saved; details are in failures.json.`;
+  if (totals.extractionFailures) el('summary').textContent += ` · ${totals.extractionFailures} extraction errors (originals kept)`;
+  if (totals.discoveryFailures) el('summary').textContent += `${el('summary').textContent ? ' · ' : ''}${totals.discoveryFailures} scan errors · See failures.json`;
   if (totals.syncPosts && !totals.selected) el('summary').textContent += `${el('summary').textContent ? ' · ' : ''}${totals.newPosts} new posts`;
   el('post-list').hidden = !view.posts.length; el('post-list-label').textContent = `Posts (${view.posts.length < totals.posts ? view.posts.length + '/' : ''}${totals.posts})`;
   el('post-selection-actions').hidden = !!job.source.postId;
-  el('post-selection-count').textContent = job.source.postId ? 'Only this post will be saved. Archive history keeps your earlier posts.' : `${totals.selectedPosts}/${totals.posts} posts selected. Only selected posts will be saved.`;
+  el('post-selection-count').textContent = job.source.postId ? 'This post only.' : `${totals.selectedPosts}/${totals.posts} posts selected`;
   check('all-posts').checked = view.allPostsSelected;
   check('all-posts').indeterminate = !view.allPostsSelected && totals.selectedPosts > 0;
   el<HTMLFieldSetElement>('post-picker').disabled = busy || !job.scan.complete || ['scanning', 'downloading'].includes(job.status) || job.archive?.state === 'saving' || job.status === 'paused' && totals.selected > 0;
@@ -396,7 +493,7 @@ function renderDiscord(view: DiscordView): void {
   if (job.autoManifest || job.archive) downloadProgress(job.archive, totals.downloaded + totals.staged, totals.downloaded + totals.staged + totals.failed + totals.skipped, totals.discovered, totals.failed + totals.skipped);
   else progress(settled === job.channels.length ? 'Ready to save' : job.status === 'paused' ? 'Discovery paused' : 'Discovering images', Math.floor(scanned / Math.max(1, job.channels.length) * 100), `Discovered: ${totals.discovered} images`);
   el('summary').textContent = totals.failed ? `${totals.failed} files need a retry.` : ''; el('post-list').hidden = true;
-  if (job.channels.some(channel => channel.coverage === 'incomplete')) notice('Some content could not be scanned. Retry failures or save the available results.');
+  if (job.channels.some(channel => channel.coverage === 'incomplete')) notice('Scan incomplete. Retry or save available files.');
   if (job.destinationError) notice(job.destinationError); common(job.status, job.archive, totals.failed + totals.skipped, ['indexed', 'finished'].includes(job.status), job.transferPolicy);
 }
 async function refresh(): Promise<void> {
@@ -423,6 +520,7 @@ async function recentJobs(): Promise<Recent[]> {
   return jobs;
 }
 void run(async () => {
+  await refreshLibrary();
   renderCacheSettings(await send<CacheMaintenanceSettings>({ type: 'LOCAL_STATUS' }));
   context = await send<PageContext | null>({ type: 'PAGE_CONTEXT' });
   if (!context) { const url = new URLSearchParams(location.hash.slice(1)).get('url'); if (url && supportedSite(url)) context = { url, expectedPosts: null }; }
@@ -441,10 +539,11 @@ function queueRefresh(immediate = false): void {
   const job = service === 'posts' ? post?.job : discord?.job;
   const active = job && (['scanning', 'downloading'].includes(job.status) || ['building', 'saving'].includes(job.archive?.state || ''));
   refreshTimer = setTimeout(async () => {
-    try { if (!busy) await refresh(); }
+    try { if (!busy) { await refresh(); if (Date.now() - libraryRefreshedAt > 5000) await refreshLibrary(); } }
     catch (error) { notice(error instanceof Error ? error.message : 'Could not refresh progress.'); }
     finally { queueRefresh(); }
   }, immediate ? 0 : active ? 1000 : 5000);
 }
-document.addEventListener('visibilitychange', () => queueRefresh(true));
+document.addEventListener('visibilitychange', () => { libraryPermissions.clear(); libraryRefreshedAt = 0; queueRefresh(true); });
+window.addEventListener('focus', () => { libraryPermissions.clear(); libraryRefreshedAt = 0; queueRefresh(true); });
 queueRefresh(true);

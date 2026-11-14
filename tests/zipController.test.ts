@@ -6,7 +6,7 @@ import { command, tick } from '../src/background/controller';
 import { commitPage, getJob, getMedia } from '../src/storage/database';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { job, scope } from './helpers';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 
 it('collects at most two images at a time and schedules the next ZIP batch without the old long idle gap', async () => {
   const archive = { ...job(), status: 'downloading' as const, destination: { kind: 'zip' as const }, autoManifest: true };

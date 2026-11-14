@@ -111,15 +111,15 @@ try {
   console.log('PASS: UI excludes an archive before transfer; repeated ZIP/image attachments download once; extracted bytes share one copy while EN/ZH versions remain.');
 
   const extracted = entries.map(entry => ({ ...entry, path: entry.path.split('/').slice(1).join('/') }));
-  await evaluate(`(async()=>{const root=await(await navigator.storage.getDirectory()).getDirectoryHandle('duplicate-folder',{create:true});for(const entry of ${JSON.stringify(extracted)}){const parts=entry.path.split('/');let dir=root;for(const part of parts.slice(0,-1))dir=await dir.getDirectoryHandle(part,{create:true});const out=await(await dir.getFileHandle(parts.at(-1),{create:true})).createWritable();await out.write(new Uint8Array(entry.bytes));await out.close();}const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kemono-archive-destinations',1);r.onupgradeneeded=()=>r.result.createObjectStore('folders');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put(root,'duplicate-folder');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();return true;})()`);
-  await send({ type: 'POST_FOLDER', jobId, directoryId: 'duplicate-folder', name: 'Duplicate fixture' });
+  await evaluate(`(async()=>{const root=await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_540245_Duplicates',{create:true});for(const entry of ${JSON.stringify(extracted)}){const parts=entry.path.split('/');let dir=root;for(const part of parts.slice(0,-1))dir=await dir.getDirectoryHandle(part,{create:true});const out=await(await dir.getFileHandle(parts.at(-1),{create:true})).createWritable();await out.write(new Uint8Array(entry.bytes));await out.close();}const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kemono-archive-destinations',1);r.onupgradeneeded=()=>r.result.createObjectStore('folders');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put(root,'fanbox_540245_Duplicates');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();return true;})()`);
+  await send({ type: 'POST_FOLDER', jobId, directoryId: 'fanbox_540245_Duplicates', name: 'fanbox_540245_Duplicates' });
   await send({ type: 'POST_DOWNLOAD', jobId, selection, destination: 'folder' });
   await waitFor(async () => (await detail()).job.status === 'finished');
   assert.equal(await requestCount(), 3);
   console.log('PASS: exported shared-file references reconnect through sync.json and unchanged folder sync makes no media requests.');
 
   const originalStory = extracted.find(entry => entry.path.includes('100_') && entry.path.endsWith('/story.txt')).path;
-  await evaluate(`(async()=>{let dir=await(await navigator.storage.getDirectory()).getDirectoryHandle('duplicate-folder');const parts=${JSON.stringify(originalStory)}.split('/');for(const part of parts.slice(0,-1))dir=await dir.getDirectoryHandle(part);await dir.removeEntry(parts.at(-1));return true;})()`);
+  await evaluate(`(async()=>{let dir=await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_540245_Duplicates');const parts=${JSON.stringify(originalStory)}.split('/');for(const part of parts.slice(0,-1))dir=await dir.getDirectoryHandle(part);await dir.removeEntry(parts.at(-1));return true;})()`);
   await send({ type: 'POST_DOWNLOAD', jobId, selection, destination: 'folder' });
   await waitFor(async () => (await detail()).job.status === 'finished');
   assert.equal(await requestCount(), 4);
@@ -127,7 +127,7 @@ try {
   console.log('PASS: deleting a unique extracted output fetches only its source archive and rebuilds valid shared references.');
 
   const sharedImage = extracted.find(entry => /_cover\.(?:jpg|png)$/.test(entry.path)).path;
-  await evaluate(`(async()=>{let dir=await(await navigator.storage.getDirectory()).getDirectoryHandle('duplicate-folder');const parts=${JSON.stringify(sharedImage)}.split('/');for(const part of parts.slice(0,-1))dir=await dir.getDirectoryHandle(part);await dir.removeEntry(parts.at(-1));return true;})()`);
+  await evaluate(`(async()=>{let dir=await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_540245_Duplicates');const parts=${JSON.stringify(sharedImage)}.split('/');for(const part of parts.slice(0,-1))dir=await dir.getDirectoryHandle(part);await dir.removeEntry(parts.at(-1));return true;})()`);
   await send({ type: 'POST_DOWNLOAD', jobId, selection, destination: 'folder' });
   await waitFor(async () => (await detail()).job.status === 'finished');
   assert.equal(await requestCount(), 7);
@@ -137,7 +137,7 @@ try {
 
   jobId = (await send({ type: 'POST_START', url: source + '/post/300' })).jobId;
   await waitFor(async () => (await detail()).job.scan.complete);
-  await send({ type: 'POST_FOLDER', jobId, directoryId: 'duplicate-folder', name: 'Duplicate fixture' });
+  await send({ type: 'POST_FOLDER', jobId, directoryId: 'fanbox_540245_Duplicates', name: 'fanbox_540245_Duplicates' });
   await send({ type: 'POST_DOWNLOAD', jobId, selection: { ...selection, text: false }, destination: 'folder' });
   await waitFor(async () => (await detail()).job.status === 'finished');
   assert.equal(await requestCount(), 7); assert.equal((await detail()).duplicates, 1);

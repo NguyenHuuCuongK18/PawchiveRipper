@@ -3,14 +3,14 @@ import { InvalidJsonError } from '../src/api/kemonoClient';
 import { PostClient } from '../src/services/posts/client';
 import type { ApiPost, PostScope } from '../src/services/posts/types';
 
-const scope: PostScope = { origin: 'https://pawchive.pw', platform: 'patreon', creatorId: '19875180', postId: null };
+const scope: PostScope = { origin: 'https://pawchive.pw', platform: 'patreon', creatorId: '20002', postId: null };
 const post: ApiPost = { id: '95624886', user: scope.creatorId, service: scope.platform, content: 'Text', attachments: [] };
 
 describe('post list response recovery', () => {
   it.each(['https://pawchive.pw', 'https://kemono.cr'])('uses the alternate endpoint for invalid JSON on %s at the same offset', async origin => {
     const transport = vi.fn().mockResolvedValueOnce(new Response('[{"id":')).mockResolvedValueOnce(new Response(JSON.stringify([post])));
     await expect(new PostClient(transport).posts({ ...scope, origin }, 1150)).resolves.toEqual([post]);
-    const base = `${origin}/api/v1/patreon/user/19875180`;
+    const base = `${origin}/api/v1/patreon/user/20002`;
     expect(transport.mock.calls.map(call => call[0])).toEqual(origin === scope.origin ?
       [`${base}?o=1150`, `${base}/posts?o=1150`] : [`${base}/posts?o=1150`, `${base}?o=1150`]);
   });

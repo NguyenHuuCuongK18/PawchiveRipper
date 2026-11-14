@@ -8,7 +8,7 @@ import { forgetDirectories, getDirectory, saveDirectory, type ArchiveDirectory }
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import type { PostJob } from '../src/services/posts/types';
 import { job, scope } from './helpers';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 
 const cancel = vi.fn();
 const folder = { kind: 'directory', name: 'Saved archive' } as ArchiveDirectory;

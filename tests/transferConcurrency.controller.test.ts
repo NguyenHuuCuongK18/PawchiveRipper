@@ -9,8 +9,8 @@ import { commitPage, deleteLocalRecords, getJob, getMedia, getPostJob, savePostJ
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import type { ApiPost, PostJob } from '../src/services/posts/types';
 import { job as discordJob, scope } from './helpers';
-import fixture from './fixtures/post-11312487.sanitized.json';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import fixture from './fixtures/post-10001.synthetic.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 
 function postJob(limit: number): PostJob {
   const source = { origin: 'https://pawchive.pw', platform: 'fanbox' as const, creatorId: fixture.user, postId: null };

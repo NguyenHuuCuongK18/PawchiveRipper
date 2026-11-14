@@ -5,10 +5,11 @@ export interface JobSummary {
   status: Job['status'] | PostJob['status']; createdAt: string; updatedAt: string;
   archiveState?: NonNullable<Job['archive']>['state']; cacheCleared: boolean;
   destinationKind?: 'folder' | 'zip' | 'browser';
+  error?: string | null;
 }
 function jobSummary(job: Job | PostJob): JobSummary {
   const base = { id: job.id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
-    archiveState: job.archive?.state, cacheCleared: !!job.archive?.cacheCleared, destinationKind: job.destination?.kind };
+    archiveState: job.archive?.state, cacheCleared: !!job.archive?.cacheCleared, destinationKind: job.destination?.kind, error: job.service === 'posts' ? job.error : undefined };
   return job.service === 'posts'
     ? { ...base, service: 'posts', sourceUrl: job.sourceUrl, title: job.source.postId ? job.posts[0]?.title || job.creatorName : job.creatorName }
     : { ...base, service: 'discord', sourceUrl: job.sourceUrl || `https://kemono.cr/discord/server/${job.serverId}${job.channels.length === 1 ? '/' + job.channels[0].channelId : ''}`, title: job.serverName || job.serverId };
@@ -107,8 +108,13 @@ export async function saveCacheSettings(settings: CacheMaintenanceSettings): Pro
   tx.objectStore('settings').put(settings, 'cache-maintenance'); await done;
 }
 export async function getPostJob(id: string): Promise<PostJob | undefined> { return result((await database()).transaction('postJobs').objectStore('postJobs').get(id)); }
+export async function getSetting<T>(key: string): Promise<T | undefined> { return result((await database()).transaction('settings').objectStore('settings').get(key)); }
+export async function putSetting(key: string, value: unknown): Promise<void> {
+  const tx = (await database()).transaction('settings', 'readwrite'), done = committed(tx); tx.objectStore('settings').put(value, key); await done;
+}
 export async function savePostJob(job: PostJob): Promise<void> {
   job.updatedAt = new Date().toISOString();
+  job.revision = (job.revision || 0) + 1;
   const tx = (await database()).transaction(['postJobs', 'jobSummaries'], 'readwrite'); const done = committed(tx);
   tx.objectStore('postJobs').put(job); tx.objectStore('jobSummaries').put(jobSummary(job)); await done;
 }

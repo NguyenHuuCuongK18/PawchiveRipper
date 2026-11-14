@@ -2,7 +2,7 @@ import { build } from 'vite';
 import { copyFile, cp, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
-await build();
+await build(process.env.VITE_CONFIG_LOADER ? { configLoader: process.env.VITE_CONFIG_LOADER } : {});
 for (const [name, entry, format] of [['background', 'src/background/index.ts', 'es'], ['content', 'src/content/index.ts', 'iife'], ['extract-worker', 'src/services/posts/extractWorker.ts', 'es']]) {
   await build({ configFile: false, publicDir: false, build: {
     outDir: 'dist', emptyOutDir: false, target: 'chrome120',

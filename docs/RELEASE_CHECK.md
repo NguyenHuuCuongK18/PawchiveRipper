@@ -1,4 +1,26 @@
-# Release check: 0.9.1
+# Release check: 1.1.0
+
+## Release validation: 2026-11-14
+
+- All 480 unit tests in 39 files passed, together with TypeScript checking and the production build. Package, lockfile, source manifest and build identify version 1.1.0.
+- The complete release gate passed against the final build: privacy checks, unit/type/build checks, all nine isolated Chromium suites, packaging and exact package verification.
+- Permission coverage verifies selected first-sync filtering, granted/completed/unselected exclusions, child-name and JSON guards, direct user activation, denial/retry/skip, automatic next-folder loading, no folder/history pickers, no post fetches or new jobs, and unchanged bytes across every fixture archive and unrelated folder. Unit checks also cover expired read access, changed metadata, stale pause messages and permission-page sender restrictions.
+- Browser checks use real OPFS handles with simulated permission responses; native operating-system permission prompts remain a manual smoke check. No user archive was modified.
+- Captured metadata/HTML and live identities were replaced with 13 deterministic synthetic fixtures. The privacy check passed for all 188 staged files, exact generated fixture bytes and reviewed asset digests. A separate scan of 249 historical text blobs found no matches for the credential patterns checked. Generated profiles, captures and archives are excluded from Git.
+- Packaging and release verification passed: 32 production files, matching versions, ZIP signatures and exact build contents. Release ZIP: `pawchive-ripper-1.1.0.zip`, 643,997 bytes.
+- ZIP SHA-256: `9634c3f2f5ef2f8338935648ec539a1d4d87d0d0a3f3650597a61daac4abc7fe`.
+
+## Previous local build 1.0.0: 2026-11-13
+
+- All 461 unit tests in 37 files passed, together with TypeScript checking and the production build. Package, lockfile, source manifest, built manifest and UI identify version 1.0.0.
+- All eight isolated Chromium suites passed during 1.0.0 validation: general browser regression, media hosts/fallback, post selection, discovery tolerance, archive settings/extraction, Blocklist coexistence, duplicate recovery, and automatic/bulk creator sync. Sync and tolerance were repeated after the final wording changes.
+- New coverage includes strict name/JSON/path guards, identity removal during comparisons, changed compressed/extracted bytes, stable paths after post renames, legacy single-post scope recovery, shared rate-limit deadlines, bounded candidate caches, verified range resumes, and retained creator connections after job cleanup.
+- The automatic-sync browser suite verifies site-open scheduling without the overlay, monthly repost reuse without another media transfer, edited text revisions, check-only mode, direct access restoration without choosing history again, persisted settings after worker restart, and unchanged unrelated fixture folders. Bulk tests select/check/sync two creators with automatic mode off, repair a missing file when recent posts are unchanged, retain duplicate handling, stop a batch, and retain a rate-limited queue across worker restart. The UI checks 36 compact cards, collapsed Details, permission actions without prompts, explicit modes and a schedule hidden when automatic sync is off. The general suite uses a controlled transfer gate to verify progress and Pause without racing file-completion timers.
+- Packaging and release verification passed: 32 production files, valid ZIP signatures, matching versions, and exact built bytes. Local ZIP: `releases/pawchive-ripper-1.0.0.zip`, 642,206 bytes. This build has not been published.
+- Local ZIP SHA-256: `5c0576923cfa6ed185bed857a18c9f1d5f3b064abd4f415ea8361f690531b566`.
+- Tests used disposable project profiles and browser-private fixture folders. the user archive was inspected read-only during research and was not modified. Native OS picker dialogs and Windows junction/reparse-point containment remain manual smoke checks; application guards are not an independently enforced OS sandbox.
+
+## Published 0.9.1 validation
 
 Local validation completed on 2026-11-09 on Windows with Node.js 26.7.0.
 
@@ -123,7 +145,7 @@ Checked on 2026-10-15 using Windows, Node.js 26.7.0, and controlled Chromium bro
 
 - All 274 unit tests in 26 files passed. New coverage checks invalid JSON and interrupted response bodies, alternate post-list routes, unchanged rate-limit handling, and recovery of a saved scan at 1150/3349 with bounded retries and retained posts/cursor.
 - TypeScript checking and the production build passed. The controlled browser scan recovered when both list endpoints initially returned truncated JSON; media acceptance and selected-post archive continuation also passed.
-- The patched client validated all 2,199 remaining public posts from offset 1150 for Patreon creator `19875180`, ending on the empty page at offset 3350. This matches the reported total of 3,349 with the earlier 1,150 posts. No media was downloaded for this live check.
+- The patched client validated all 2,199 remaining public posts from offset 1150 for Patreon creator `{creatorOrPostId}`, ending on the empty page at offset 3350. This matches the reported total of 3,349 with the earlier 1,150 posts. No media was downloaded for this live check.
 - Package, lockfile, source manifest, and built manifest all identify version 0.5.2. Package verification checked the 18 production files, exact build bytes, and ZIP signatures.
 
 Release artifact: `KemonoPawchiveArchiveRipper-0.5.2.zip` (175,429 bytes).
@@ -141,8 +163,8 @@ Update the existing extension directory, reload the extension, refresh the Pawch
 Checked on 2026-10-15 using Windows, Node.js 26.7.0, and controlled Chromium browser scenarios.
 
 - All 256 unit tests in 25 files passed, including recovery of a saved scan at offset 450 through both Resume and Retry, prefixed detail IDs, direct post links, and native/legacy sync history.
-- TypeScript checking and the production build passed. The browser regression, native media acceptance, and selected-post archive continuation scripts passed. The browser fixture includes `p-1237087` and verifies that it survives ZIP export and subsequent folder sync.
-- The patched client validated all 50 posts from the live Patreon creator `19875180` at offset 450 and fetched post `p-1237087` with its matching creator and service. No media was downloaded for this live check; the full live creator was not rescanned.
+- TypeScript checking and the production build passed. The browser regression, native media acceptance, and selected-post archive continuation scripts passed. The browser fixture includes `p-{postId}` and verifies that it survives ZIP export and subsequent folder sync.
+- The patched client validated all 50 posts from the live Patreon creator `{creatorOrPostId}` at offset 450 and fetched post `p-{postId}` with its matching creator and service. No media was downloaded for this live check; the full live creator was not rescanned.
 - Package, lockfile, source manifest, and built manifest all identify version 0.5.1. Package verification checked the 18 build files, their exact bytes, and ZIP signatures. Temporary browser profiles and downloaded test content were removed by the test scripts.
 
 Release artifact: `KemonoPawchiveArchiveRipper-0.5.1.zip` (175,352 bytes).

@@ -22,11 +22,13 @@ npm run test:tolerance
 npm run test:settings
 npm run test:compatibility
 npm run test:duplicates
+npm run test:sync
+npm run test:permissions
 ```
 
 The coexistence check loads the independent Blocklist extension from `../PawchiveBlockList/extension`. Clone that project alongside this one, or set `PAWCHIVE_BLOCKLIST_DIR` to its `extension` directory. CI checks out Blocklist v1.0.0 into `.compat-blocklist/` and supplies that variable. The sibling is a test fixture dependency only.
 
-`npm run fixtures:image` regenerates the original geometric JPEG used by browser tests. Captured live media is not a test asset. Optional recon scripts write ignored captures under `artifacts/`; review and sanitize metadata deliberately before replacing committed fixtures.
+`npm run fixtures:image` regenerates the original geometric JPEG. `npm run fixtures:data` regenerates all metadata/HTML from fictional identities and paths. `npm run privacy:check` checks generated fixtures, reviewed asset digests, secret patterns and excluded paths; use `node scripts/privacy-check.mjs --staged` before pushing to check the exact Git index. Optional recon scripts require explicit IDs and write only ignored `artifacts/recon/`. Live captures must never replace committed fixtures.
 
 ## Packaging
 
@@ -34,7 +36,7 @@ The coexistence check loads the independent Blocklist extension from `../Pawchiv
 npm run release:check
 ```
 
-The release gate builds, runs the seven browser suites, writes `releases/pawchive-ripper-VERSION.zip` and `releases/SHA256SUMS.txt`, then verifies exact build bytes, ZIP signatures, manifest/package versions, notices and checksum. The ZIP has `manifest.json` at its root and includes `LICENSE`, `THIRD_PARTY_NOTICES.md` and dependency notices.
+The release gate first checks privacy, then builds, runs the nine browser suites, writes `releases/pawchive-ripper-VERSION.zip` and `releases/SHA256SUMS.txt`, and verifies exact build bytes, ZIP signatures, manifest/package versions, notices and checksum. The ZIP has `manifest.json` at its root and includes `LICENSE`, `THIRD_PARTY_NOTICES.md` and dependency notices.
 
 Only `dist/` is packaged. Dependencies, source, tests, browser profiles, screenshots, editor settings and source-control data stay out. ZIPs and generated output are ignored in Git. Original source/fixture licensing and bundled dependencies are documented in the root third-party notice.
 

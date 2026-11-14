@@ -1,17 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InvalidJsonError, KemonoClient, RequestError, retryAfter } from '../src/api/kemonoClient';
 import { parseChannelUrl, makeThumbnailUrl, safeMediaUrl } from '../src/core/urlParser';
-const channelId = '1268995994440302725';
-const sample = 'https://kemono.cr/discord/server/1217290220718915654/' + channelId;
+const channelId = '2222222222222222222';
+const sample = 'https://kemono.cr/discord/server/1111111111111111111/' + channelId;
 describe('API boundary', () => {
   it('preserves snowflakes and rejects other origins', () => {
     expect(parseChannelUrl(sample)?.channelId).toBe(channelId);
-    expect(parseChannelUrl(sample)?.serverId).toBe('1217290220718915654');
+    expect(parseChannelUrl(sample)?.serverId).toBe('1111111111111111111');
     expect(parseChannelUrl(sample.replace('kemono.cr', 'evil.example'))).toBeNull();
     expect(parseChannelUrl(sample.replace('https:', 'http:'))).toBeNull();
   });
   it('sends the site-required header and parses misleading MIME', async () => {
-    const transport = vi.fn().mockResolvedValue(new Response('[{"id":"1268995994440302725","attachments":[]}]', { headers: { 'content-type': 'text/css' } }));
+    const transport = vi.fn().mockResolvedValue(new Response('[{"id":"2222222222222222222","attachments":[]}]', { headers: { 'content-type': 'text/css' } }));
     expect(await new KemonoClient(transport).channel(channelId, 150)).toHaveLength(1);
     expect(transport.mock.calls[0][0]).toContain('?o=150');
     expect(transport.mock.calls[0][1].headers).toEqual({ Accept: 'text/css' });
@@ -21,7 +21,7 @@ describe('API boundary', () => {
     const client = new KemonoClient(vi.fn().mockResolvedValue(new Response('private error body', { status })));
     await expect(client.channel(channelId, 0)).rejects.toBeInstanceOf(RequestError);
   });
-  it.each(['<html>error</html>', '{}', '[{"id":1268995994440302725}]'])('rejects malformed or unsafe response %s', async body => {
+  it.each(['<html>error</html>', '{}', '[{"id":2222222222222222222}]'])('rejects malformed or unsafe response %s', async body => {
     await expect(new KemonoClient(vi.fn().mockResolvedValue(new Response(body))).channel(channelId, 0)).rejects.toThrow();
   });
   it.each(['', '<html>temporary gateway failure</html>', '[{"id":"123"}'])('makes malformed successful responses retryable without accepting a partial page: %j', async body => {
@@ -47,7 +47,7 @@ describe('API boundary', () => {
     expect(error).toMatchObject({ status: 422, retryable: false });
   });
   it('maps only safe image paths', () => {
-    const path = '/82/79/8279311a88d313cf25b6f1ad302ac7f82203f9712829b82785b0b3fac3e0871e.png';
+    const path = '/aa/aa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png';
     expect(makeThumbnailUrl(path)).toBe(`https://img.kemono.cr/thumbnail/data${path}`);
     expect(safeMediaUrl(makeThumbnailUrl(path))).toBe(makeThumbnailUrl(path));
     expect(safeMediaUrl('https://file.pawchive.pw/data' + path)).toBe('https://file.pawchive.pw/data' + path);

@@ -9,12 +9,12 @@ import { FolderPermissionError } from '../src/storage/destination';
 import { getJob, getMedia, saveJob, saveMedia } from '../src/storage/database';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { job, scope } from './helpers';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 it('pauses the whole batch on folder permission loss and requires access before resume', async () => {
   const archive = { ...job(), status: 'downloading' as const, destination: { kind: 'folder' as const, name: 'Pictures' } };
   await saveJob(archive); mocks.requireDirectory.mockRejectedValue(new FolderPermissionError());
   await tick(); const paused = (await getJob(archive.id))!;
-  expect(paused.status).toBe('paused'); expect(paused.resumeStatus).toBe('downloading'); expect(paused.destinationError).toContain('Allow folder access');
+  expect(paused.status).toBe('paused'); expect(paused.resumeStatus).toBe('downloading'); expect(paused.destinationError).toContain('Folder access is required');
   await expect(command({ type: 'ACTION', jobId: archive.id, action: 'resume' }, {})).rejects.toBeInstanceOf(FolderPermissionError);
   mocks.requireDirectory.mockResolvedValue({ name: 'Pictures' });
   await command({ type: 'ACTION', jobId: archive.id, action: 'resume' }, {});

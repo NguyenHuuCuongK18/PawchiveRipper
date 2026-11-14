@@ -4,12 +4,15 @@ import { reconcilePostDownloads, tickPosts } from '../services/posts/controller'
 import { supportedSite } from '../services/registry';
 import { maintainZipCaches } from '../services/cacheMaintenance';
 import { hasActiveJobs } from '../storage/database';
+import { checkCreatorLibrary } from '../services/posts/library';
+import { processLibraryBatch } from '../services/posts/libraryBatch';
 import { SerialQueue, WorkerPump } from './scheduler';
 const queue = new SerialQueue();
 const pump = new WorkerPump(() => queue.run(async () => {
+  const batchDelay = await processLibraryBatch();
   const postsActive = await tickPosts();
   const delay = postsActive ? 750 : await tick();
-  return await hasActiveJobs() ? delay || 1200 : undefined;
+  return await hasActiveJobs() ? delay || 1200 : batchDelay;
 }));
 chrome.runtime.onMessage.addListener((message: ServiceCommand & { target?: string }, sender, respond) => {
   if (sender.id !== chrome.runtime.id || message.target === 'offscreen') return;
@@ -23,7 +26,7 @@ chrome.downloads.onChanged.addListener(delta => {
   void queue.run(async () => { await downloadChanged(delta); await reconcilePostDownloads(false, delta.id); }).catch(() => {}).finally(() => pump.wake());
 });
 chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === 'archive-tick') pump.wake();
+  if (alarm.name === 'archive-tick') void queue.run(() => checkCreatorLibrary()).catch(() => {}).finally(() => pump.wake());
   if (alarm.name === 'archive-maintenance') void queue.run(() => maintainZipCaches()).catch(() => {});
 });
 async function recoverServices(): Promise<void> { await recover(); await reconcilePostDownloads(true); await maintainZipCaches(); }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ stageStream: vi.fn(), stageImage: vi.fn(), stagedFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ stageStream: vi.fn(), stageImage: vi.fn(), stagedFile: vi.fn(), readResume: vi.fn(), clearResume: vi.fn(), stageResumable: vi.fn(), RESUME_CHUNK_BYTES: 8 * 1024 * 1024 }));
 vi.mock('../src/storage/zipCache', () => mocks);
 import { transferPost } from '../src/services/posts/transfer';
 import { TRANSFER_IDLE_MS, VALIDATION_TIMEOUT_MS } from '../src/services/posts/transferWatchdog';
@@ -103,4 +103,14 @@ it.each([['json', 'application/json', '{"attachment":true}'], ['xhtml', 'applica
 it('still rejects server error pages in place of uncommon image originals', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>error</html>', { headers: { 'Content-Type': 'application/octet-stream' } })));
   await expect(transferPost('job', { ...task, kind: 'image', path: task.path.replace('.psd', '.heic') }, post, source)).rejects.toThrow('error page');
+});
+it('passes a verified resumed tail into staging and reports progress against the full file size', async () => {
+  const prefix = new File([new Uint8Array(8 * 1024 * 1024)], 'prefix');
+  const checkpoint = { url: task.url!, etag: '"same"', bytes: prefix.size, total: prefix.size + 4, files: [prefix] };
+  mocks.readResume.mockResolvedValue(checkpoint);
+  mocks.stageResumable.mockImplementation(async (_job, _id, input: ReadableStream<Uint8Array>) => new File([prefix, await new Response(input).blob()], 'complete'));
+  const fetch = vi.fn().mockResolvedValue(new Response('tail', { status: 206, headers: { etag: '"same"', 'content-range': `bytes ${prefix.size}-${prefix.size + 3}/${prefix.size + 4}`, 'content-length': '4' } })); vi.stubGlobal('fetch', fetch);
+  const progress = vi.fn(); await expect(transferPost('job', task, post, source, undefined, progress)).resolves.toMatchObject({ bytes: prefix.size + 4 });
+  expect(mocks.clearResume).not.toHaveBeenCalled(); expect(mocks.stageStream).not.toHaveBeenCalled();
+  expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ phase: 'validating', receivedBytes: prefix.size + 4, totalBytes: prefix.size + 4 }));
 });

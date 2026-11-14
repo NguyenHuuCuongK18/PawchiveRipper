@@ -6,6 +6,19 @@ import { defaultSelection, validSelection } from '../src/services/posts/settings
 import { emptySync, parseSync, recordSaved, syncKey } from '../src/services/posts/sync';
 import type { PostJob, PostTask } from '../src/services/posts/types';
 
+it('reuses unchanged candidate fingerprints across archives while still comparing every byte', async () => {
+  const bytes = new Uint8Array(300000).fill(42), file = new File([bytes], 'saved', { lastModified: 123 });
+  let reads = 0; const slice = file.slice.bind(file); file.slice = (...args) => { reads++; return slice(...args); };
+  const namespace = crypto.randomUUID(), candidate = { id: 'saved', path: 'full res/100_Title/file.bin', bytes: file.size, read: async () => file };
+  const first = new IdenticalFileIndex(namespace); first.add(candidate); expect(await first.match(new Blob([bytes]))).toMatchObject({ id: 'saved' });
+  const before = reads, second = new IdenticalFileIndex(namespace); second.add({ ...candidate });
+  expect(await second.match(new Blob([bytes]))).toMatchObject({ id: 'saved' }); expect(reads - before).toBe(1);
+  const changed = new File([bytes], 'saved', { lastModified: 124 }); let changedReads = 0;
+  const changedSlice = changed.slice.bind(changed); changed.slice = (...args) => { changedReads++; return changedSlice(...args); };
+  const third = new IdenticalFileIndex(namespace); third.add({ ...candidate, read: async () => changed });
+  expect(await third.match(new Blob([bytes]))).toMatchObject({ id: 'saved' }); expect(changedReads).toBe(4);
+});
+
 const source = { origin: 'https://pawchive.pw', platform: 'fanbox' as const, creatorId: '540245', postId: null };
 const path = '/2aa/bb/' + 'a'.repeat(64) + '.zip';
 const makeJob = () => ({ source, creatorName: 'Creator', destination: { kind: 'folder', directoryId: 'test', name: 'test' }, selection: defaultSelection(),

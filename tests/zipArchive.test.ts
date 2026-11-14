@@ -6,7 +6,7 @@ import { newArchive, prepareZip, reconcileZip, saveZip } from '../src/background
 import { commitPage, getJob, getMedia, saveCacheSettings } from '../src/storage/database';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { job, scope } from './helpers';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 import type { Job } from '../src/core/types';
 const download = vi.fn(), search = vi.fn();
 beforeEach(async () => {

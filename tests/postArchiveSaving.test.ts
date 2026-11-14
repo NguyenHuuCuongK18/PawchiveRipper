@@ -7,6 +7,8 @@ import { createTasks, normalizePost } from '../src/services/posts/media';
 import { removeExtractedArchive } from '../src/services/posts/extraction';
 import { buildPostZip } from '../src/services/posts/zip';
 import { emptySync, recordSaved } from '../src/services/posts/sync';
+import { contentDigest } from '../src/services/posts/creatorSafety';
+const sourceDigest = await contentDigest(new Blob(['original'])), outputDigest = await contentDigest(new Blob(['content']));
 import { archiveSettings, defaultSelection } from '../src/services/posts/settings';
 import type { PostJob, PostTask } from '../src/services/posts/types';
 
@@ -15,6 +17,8 @@ const rejectedNames = new Set<string>();
 let failIndex = false;
 function directory(prefix = ''): FileSystemDirectoryHandle {
   return {
+    name: prefix ? prefix.split('/').filter(Boolean).at(-1) : 'fanbox_123_Creator', __prefix: prefix,
+    resolve: async (entry: { __prefix: string }) => entry.__prefix.startsWith(prefix) ? entry.__prefix.slice(prefix.length).split('/').filter(Boolean) : null,
     getDirectoryHandle: async (name: string) => {
       if (rejectedNames.has(name)) throw new TypeError("Failed to execute 'getDirectoryHandle' on 'FileSystemDirectoryHandle': Name is not allowed.");
       return directory(prefix + name + '/');
@@ -36,11 +40,12 @@ function directory(prefix = ''): FileSystemDirectoryHandle {
 }
 function job(): PostJob {
   const task: PostTask = { id: '100:full res:/aa/bb/' + 'a'.repeat(64) + '.zip', postId: '100', quality: 'full res', kind: 'file', url: null, path: 'full res/100_Title/001_bundle.zip', status: 'downloaded', bytes: 8, attempts: 1, nextAt: 0, error: null,
-    extraction: { state: 'done', files: [] } };
-  task.extraction!.files = [{ id: task.id + ':extract:1', path: task.path + '.extracted/nested/file.txt', bytes: 7 }];
+    extraction: { state: 'done', sourceDigest, files: [] } };
+  task.extraction!.files = [{ id: task.id + ':extract:1', path: task.path + '.extracted/nested/file.txt', bytes: 7, digest: outputDigest }];
   const value = { id: 'archive-saving', source: { origin: 'https://pawchive.pw', platform: 'fanbox', creatorId: '123', postId: null }, sourceUrl: 'https://pawchive.pw/fanbox/user/123', creatorName: 'Creator', selection: { ...defaultSelection(), extractArchives: true }, posts: [{ id: '100', title: 'Title' }], scan: { complete: true }, tasks: [task], destination: { kind: 'folder', directoryId: 'folder', name: 'Creator' } } as PostJob;
   value.sync = emptySync(value); recordSaved(value.sync, task, 'Title');
   files.set(task.path, new Blob(['original'])); files.set(task.extraction!.files[0].path, new Blob(['content']));
+  files.set('sync.json', new Blob([JSON.stringify(value.sync)]));
   return value;
 }
 const json = (value: unknown) => new Blob([JSON.stringify(value)]);
@@ -111,6 +116,30 @@ describe('settings migration and extracted archive saving', () => {
     await expect(removeExtractedArchive(value, task.id)).rejects.toThrow('incomplete'); expect(files.has(task.path)).toBe(true);
     files.set(task.extraction!.files[0].path, new Blob(['content'])); failIndex = true;
     await expect(removeExtractedArchive(value, task.id)).rejects.toThrow('Disk full'); expect(files.has(task.path)).toBe(true);
+  });
+  it('keeps the compressed source when an extracted output changes without changing size', async () => {
+    const value = job(), task = value.tasks[0]; files.set(task.extraction!.files[0].path, new Blob(['changed']));
+    await expect(removeExtractedArchive(value, task.id)).rejects.toThrow('changed'); expect(files.has(task.path)).toBe(true);
+    expect(events.some(event => event.startsWith('remove:'))).toBe(false);
+  });
+  it('keeps a same-size replacement of the compressed source', async () => {
+    const value = job(), task = value.tasks[0]; files.set(task.path, new Blob(['modified']));
+    await expect(removeExtractedArchive(value, task.id)).rejects.toThrow('compressed file changed'); expect(await files.get(task.path)!.text()).toBe('modified');
+    expect(events.some(event => event.startsWith('remove:'))).toBe(false);
+  });
+  it('rechecks archive identity after output verification before removing the source', async () => {
+    const value = job(), task = value.tasks[0], output = files.get(task.extraction!.files[0].path)!, slice = output.slice.bind(output);
+    output.slice = (...args) => { files.delete('sync.json'); return slice(...args); };
+    await expect(removeExtractedArchive(value, task.id)).rejects.toThrow('valid sync.json'); expect(files.has(task.path)).toBe(true);
+    expect(events.some(event => event.startsWith('remove:'))).toBe(false);
+  });
+  it('keeps new attachments in the existing post folder after a remote title changes', async () => {
+    const value = job(); const extra = { ...value.tasks[0], id: '100:full res:/bb/cc/' + 'b'.repeat(64) + '.jpg', kind: 'image' as const, path: 'full res/100_Renamed/002_new.jpg', extraction: undefined, status: 'queued' as const };
+    value.tasks.push(extra); await checkFolder(value); expect(extra.path).toBe('full res/100_Title/002_new.jpg');
+  });
+  it('repairs a missing output at its recorded path rather than changing shared references', async () => {
+    const value = job(), task = value.tasks[0], original = task.path; task.extraction = undefined; task.path = 'full res/100_Renamed/001_renamed.zip'; files.delete(original);
+    expect((await checkFolder(value)).files).toHaveLength(0); expect(task.path).toBe(original); expect(task.preservePath).toBe(true);
   });
   it('syncs complete extracted contents without the original, and redownloads if an output is missing or extraction is disabled', async () => {
     const value = job(), task = value.tasks[0]; await removeExtractedArchive(value, task.id);

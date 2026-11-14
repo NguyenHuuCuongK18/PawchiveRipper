@@ -2,6 +2,8 @@ import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+const [serverId, ...channels] = process.argv.slice(2);
+if (!serverId || !channels.length || ![serverId, ...channels].every(id => /^\d{1,25}$/.test(id))) throw new Error('Usage: npm run recon -- SERVER_ID CHANNEL_ID [CHANNEL_ID...]');
 // No existing browser profile, cookies, tokens, or user account is accessed.
 const root = resolve('.probe');
 const capture = resolve('artifacts/recon');
@@ -22,8 +24,6 @@ try {
   const cdp = await context.newCDPSession(await context.newPage());
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: resolve('artifacts/recon-downloads') });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
-  const serverId = '1217290220718915654';
-  const channels = ['1268995994440302725', '1218678089555640351'];
   const fetchJson = async (path) => worker.evaluate(async (path) => {
     const response = await fetch(`https://kemono.cr/api/v1${path}`, {
       headers: { Accept: 'text/css' }, credentials: 'omit', signal: AbortSignal.timeout(20000),
@@ -38,7 +38,7 @@ try {
     id: c.id, server_id: c.server_id, name: c.name, parent_channel_id: c.parent_channel_id,
     type: c.type, position: c.position, post_count: c.post_count,
   })) };
-  await writeFile(resolve(capture, 'server.sanitized.json'), JSON.stringify(safeServer, null, 2));
+  await writeFile(resolve(capture, 'server.capture.json'), JSON.stringify(safeServer, null, 2));
   const report = { serverStatus: server.status, apiMime: server.contentType, channels: [], thumbnail: null, pageContext: null };
   for (const channel of channels) {
     const pages = [];
@@ -51,13 +51,13 @@ try {
         content: (m.content?.match(/https:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\/[^\s<>"']+/g) || []).join(' '),
         attachments: (m.attachments || []).map(a => ({ name: a.name, path: a.path })),
       }));
-      await writeFile(resolve(capture, `channel-${channel}-${offset}.sanitized.json`), JSON.stringify(safe, null, 2));
+      await writeFile(resolve(capture, `channel-${channel}-${offset}.capture.json`), JSON.stringify(safe, null, 2));
       pages.push({ offset, count: safe.length, first: safe[0]?.id, last: safe.at(-1)?.id, attachments: safe.reduce((n, m) => n + m.attachments.length, 0) });
       await new Promise(r => setTimeout(r, 1100));
     }
     report.channels.push({ id: channel, pages });
   }
-  const thumbnailUrl = 'https://img.kemono.cr/thumbnail/data/82/79/8279311a88d313cf25b6f1ad302ac7f82203f9712829b82785b0b3fac3e0871e.png';
+  const thumbnailUrl = 'https://img.kemono.cr/thumbnail/data/aa/aa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png';
   report.thumbnail = await worker.evaluate(async url => {
     const response = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(20000) });
     if (!response.ok) throw new Error(`Thumbnail HTTP ${response.status}`);
@@ -102,7 +102,7 @@ try {
     }
     return article.outerHTML;
   }).join('\n'));
-  await writeFile(resolve(capture, 'channel.sanitized.html'), safeHtml);
+  await writeFile(resolve(capture, 'channel.capture.html'), safeHtml);
   await writeFile(resolve(capture, 'recon.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally { await context.close(); }

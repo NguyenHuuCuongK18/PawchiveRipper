@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ offscreen: vi.fn(), release: vi.fn() }));
 vi.mock('../src/background/offscreenBridge', () => mocks);
-import fixtureData from './fixtures/post-11312487.sanitized.json';
+import fixtureData from './fixtures/post-10001.synthetic.json';
 import { createTasks, normalizePost, postFolder, postRelativePath, postZipJob } from '../src/services/posts/media';
 import { emptySync, parseSync, recordSaved, validSelection, zipSync } from '../src/services/posts/sync';
 import { postCommand, postDetail, reconcilePostDownloads, tickPosts } from '../src/services/posts/controller';
@@ -72,7 +72,7 @@ describe('folder access recovery', () => {
     mocks.offscreen.mockResolvedValue(emptySync(value));
     await postCommand({ type: 'POST_SYNC_CONNECT', jobId: value.id, directoryId: 'folder', name: 'Archive' });
     const connected = (await getPostJob(value.id))!;
-    expect(connected).toMatchObject({ status: 'scanning', source: { postId: fixture.id }, sourceUrl: value.sourceUrl, destination: { kind: 'folder', directoryId: 'folder' }, sync: { source: { creatorId: '24738214' } } });
+    expect(connected).toMatchObject({ status: 'scanning', source: { postId: fixture.id }, sourceUrl: value.sourceUrl, destination: { kind: 'folder', directoryId: 'folder' }, sync: { source: { creatorId: '20001' } } });
     expect(connected.scan.complete).toBe(false);
   });
   it('leaves the previous job intact if the selected history disappears before connection', async () => {
@@ -120,18 +120,18 @@ describe('sortable post folders and sync compatibility', () => {
     const value = job(), zipTasks = createTasks(value, selection);
     value.destination = { kind: 'folder', directoryId: 'folder', name: 'folder' };
     const folderTasks = createTasks(value, selection);
-    expect(zipTasks.every(task => task.path.startsWith('fanbox_24738214_Creator/full res/2026-01-28_11312487_Main file with no attachments/'))).toBe(true);
+    expect(zipTasks.every(task => task.path.startsWith('fanbox_20001_Creator/full res/2026-01-01_10001_Main file with no attachments/'))).toBe(true);
     expect(folderTasks.map(postRelativePath)).toEqual(zipTasks.map(postRelativePath));
     expect(postZipJob({ ...value, tasks: folderTasks }).tasks.map(task => task.path)).toEqual(zipTasks.map(task => task.path));
   });
-  it.each(['11312487_Old title', '2026-01-28_11312487_New title', 'unknown-date_11312487_No date'])('accepts saved history at %s without renaming it', folder => {
+  it.each(['10001_Old title', '2026-01-28_10001_New title', 'unknown-date_10001_No date'])('accepts saved history at %s without renaming it', folder => {
     const value = job(), task = createTasks(value, selection)[0];
     task.path = `full res/${folder}/001_image.jpg`; task.status = 'downloaded'; task.bytes = 20;
     const index = emptySync(value); recordSaved(index, task, 'Title');
     expect(parseSync(index, value.source).posts[0].files[0].path).toBe(task.path);
     expect(postRelativePath(task)).toBe(task.path);
   });
-  it.each(['2026-01-28_999_Other post', '../11312487_Title', '113124870_Wrong ID'])('rejects unsafe or foreign folder %s', folder => {
+  it.each(['2026-01-28_999_Other post', '../10001_Title', '100010_Wrong ID'])('rejects unsafe or foreign folder %s', folder => {
     const value = job(), task = createTasks(value, selection)[0];
     task.path = `full res/${folder}/001_image.jpg`; task.status = 'downloaded'; task.bytes = 20;
     const index = emptySync(value); recordSaved(index, task, 'Title');
@@ -180,7 +180,7 @@ describe('optional thumbnail fallback', () => {
     value.tasks = createTasks(value, selection);
     expect(value.tasks[0]).toMatchObject({ quality: 'thumbnail', status: 'queued', fallback: true });
     expect(value.tasks[0].id).toContain(':thumbnail:');
-    expect(value.tasks[0].path).toContain('/thumbnail/2026-01-28_11312487_');
+    expect(value.tasks[0].path).toContain('/thumbnail/2026-01-01_10001_');
     value.tasks[0].status = 'staged'; value.tasks[0].bytes = 20;
     const index = parseSync(zipSync(value), value.source);
     expect(index.posts[0].files[0].quality).toBe('thumbnail');
@@ -225,7 +225,7 @@ describe('optional thumbnail fallback', () => {
     value.status = 'downloading'; value.tasks = createTasks(value, selection).slice(0, 1);
     value.tasks[0].status = 'transferring'; value.tasks[0].attempts = 1;
     value.nextAt = Date.now() + 60000; await savePostJob(value);
-    const id = value.tasks[0].id.replace(':full res:', ':thumbnail:'), path = 'thumbnail/11312487_Old title/001_image.jpg';
+    const id = value.tasks[0].id.replace(':full res:', ':thumbnail:'), path = 'thumbnail/10001_Old title/001_image.jpg';
     mocks.offscreen.mockImplementation(async (action: string) => {
       if (action === 'post-transfer-status') return { state: 'done', status: 404, failure: 'Not found' };
       if (action === 'post-folder-check') return { files: [{ id, path, bytes: 20 }] };

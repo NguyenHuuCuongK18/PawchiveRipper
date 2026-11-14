@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, it, expect } from 'vitest';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { commitPage, deleteLocalRecords, getArchiveJobsForDownload, getJob, getJobSummaries, getMedia, getMediaForDownload, hasActiveJobs, saveJob, saveJobAndMedia, saveMedia, saveMediaRecords } from '../src/storage/database';
 import { job, scope } from './helpers';

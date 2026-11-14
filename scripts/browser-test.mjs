@@ -28,16 +28,16 @@ try {
       await cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }) }); return await result;
     } finally { await cdp.send('Target.detachFromTarget', { sessionId }); }
   }
-  const profileUrl = 'https://pawchive.pw/fanbox/user/4862787';
+  const profileUrl = 'https://pawchive.pw/fanbox/user/20003';
   const path = (letter, ext) => `/${letter.repeat(2)}/${letter.repeat(2)}/${letter.repeat(64)}.${ext}`;
-  const primary = { id: '1', user: '4862787', service: 'fanbox', title: 'Sample post', content: '<p>Saved text &amp; links.</p><script>bad()</script>', published: '2026-10-01T01:02:03', detail_fetched: true, has_full: true, file: { name: 'drawing.png', path: path('a','png'), node: 2 }, attachments: [{ name: 'source.psd', path: path('b','psd'), node: 2 }] };
-  const old = { ...primary, id: 'p-1237087', title: 'Thumbnail-only post', has_full: false, file: { name: 'old.png', path: path('c','png') }, attachments: [] };
+  const primary = { id: '1', user: '20003', service: 'fanbox', title: 'Sample post', content: '<p>Saved text &amp; links.</p><script>bad()</script>', published: '2026-10-01T01:02:03', detail_fetched: true, has_full: true, file: { name: 'drawing.png', path: path('a','png'), node: 2 }, attachments: [{ name: 'source.psd', path: path('b','psd'), node: 2 }] };
+  const old = { ...primary, id: 'p-10002', title: 'Thumbnail-only post', has_full: false, file: { name: 'old.png', path: path('c','png') }, attachments: [] };
   const posts = [primary, old, ...Array.from({ length: 49 }, (_, i) => ({ ...primary, id: String(i + 3), title: `Text post ${i + 3}`, file: {}, attachments: [] }))];
   await worker.evaluate(({ posts, primary }) => {
     const nativeFetch = fetch; globalThis.__requests = []; globalThis.__downloads = []; globalThis.__posts = posts; globalThis.__invalidPages = 0;
     globalThis.fetch = async (input, init) => {
       const url = String(input); if (!url.includes('/api/v1/')) return nativeFetch(input, init); globalThis.__requests.push(url);
-      if (url.endsWith('/profile')) return new Response(JSON.stringify({ id: '4862787', name: 'Sample creator' }));
+      if (url.endsWith('/profile')) return new Response(JSON.stringify({ id: '20003', name: 'Sample creator' }));
       if (url.includes('/post/')) return new Response(JSON.stringify(primary));
       if (url.includes('/discord/server/')) return new Response(JSON.stringify({ id: '123', name: 'Sample server', channels: [{ id: '456', name: 'Channel', post_count: 1 }] }));
       if (url.includes('/discord/channel/')) return new Response(JSON.stringify(new URL(url).searchParams.get('o') === '0' ? [{ id: '789', server: '123', channel: '456', attachments: [{ name: 'image.png', path: primary.file.path }] }] : []));
@@ -71,7 +71,9 @@ try {
   await waitFor(async () => (await cdp.send('Target.getTargets')).targetInfos.some(target => target.url === offscreenUrl));
   const fixture = (await readFile('tests/fixtures/test-image.jpg')).toString('base64');
   const fileBytes = [56, 66, 80, 83, 0, 1, 10, 20, 30];
-  await targetEvaluate(offscreenUrl, `(() => { const image = Uint8Array.from(atob(${JSON.stringify(fixture)}),c=>c.charCodeAt(0)); globalThis.__mediaRequests=[]; const nativeFetch=fetch; globalThis.fetch=async(input,init)=>{const url=String(input); if(!url.startsWith('https:'))return nativeFetch(input,init); globalThis.__mediaRequests.push(url); const bytes=url.includes('.psd')?new Uint8Array(${JSON.stringify(fileBytes)}):image; let timer; const stream=new ReadableStream({start(controller){controller.enqueue(bytes.slice(0,4));timer=setTimeout(()=>{controller.enqueue(bytes.slice(4));controller.close();},3000);},cancel(){clearTimeout(timer);}}); return new Response(stream,{headers:{'content-type':url.includes('.psd')?'application/octet-stream':'image/jpeg'}});}; return true; })()`);
+  // Keep the first bytes in flight until the progress assertion and pause have
+  // completed. Wall-clock delays race the UI polling interval on busy machines.
+  await targetEvaluate(offscreenUrl, `(() => { const image = Uint8Array.from(atob(${JSON.stringify(fixture)}),c=>c.charCodeAt(0)); globalThis.__mediaRequests=[]; globalThis.__releaseTransfers=false; const nativeFetch=fetch; globalThis.fetch=async(input,init)=>{const url=String(input); if(!url.startsWith('https:'))return nativeFetch(input,init); globalThis.__mediaRequests.push(url); const bytes=url.includes('.psd')?new Uint8Array(${JSON.stringify(fileBytes)}):image; let timer; const stream=new ReadableStream({start(controller){controller.enqueue(bytes.slice(0,4));timer=setInterval(()=>{if(!globalThis.__releaseTransfers)return;clearInterval(timer);controller.enqueue(bytes.slice(4));controller.close();},50);},cancel(){clearInterval(timer);}}); return new Response(stream,{headers:{'content-type':url.includes('.psd')?'application/octet-stream':'image/jpeg'}});}; return true; })()`);
   const send = (message) => frame.evaluate(async message => { const reply=await chrome.runtime.sendMessage(message); if(!reply.ok)throw new Error(reply.error); return reply.data; },message);
   let jobId = (await send({ type: 'SERVICE_JOBS' }))[0].id;
   await frame.locator('#local-data > summary').click();
@@ -99,6 +101,7 @@ try {
   console.log('PASS: active filenames and received bytes update before a whole file finishes, while pause remains responsive.');
   await frame.locator('#pause').click();
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.status === 'paused');
+  await targetEvaluate(offscreenUrl, '(globalThis.__releaseTransfers = true)');
   await frame.locator('#resume').click();
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.archive?.state === 'saved');
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.archive?.cacheCleared === true);
@@ -110,7 +113,7 @@ try {
   const zip = new ZipReader(new Uint8ArrayReader(new Uint8Array(await readFile(items[0].filename))), { useWebWorkers: false });
   const entries = await zip.getEntries();
   assert(!entries.some(entry => entry.filename.startsWith('ArchiveRoot/')));
-  assert(entries.every(entry => entry.filename.startsWith('fanbox_4862787_Sample creator/')));
+  assert(entries.every(entry => entry.filename.startsWith('fanbox_20003_Sample creator/')));
   const syncEntry = entries.find(entry => entry.filename.endsWith('/sync.json'));
   const syncIndex = JSON.parse(new TextDecoder().decode(await syncEntry.getData(new Uint8ArrayWriter())));
   assert(syncIndex.posts.some(post => post.id === old.id));
@@ -152,9 +155,9 @@ try {
   await worker.evaluate(primary => globalThis.__posts.unshift({ ...primary, id: '52', title: 'New post 52', attachments: [], file: { ...primary.file, path: primary.file.path.replaceAll('a', 'd') } }), primary);
   await frame.locator('#sync-file').setInputFiles({ name: 'manifest.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(legacyManifest)) });
   await waitFor(async () => { const view = await send({ type: 'POST_DETAIL', jobId }); return view.job.scan.complete && view.totals.posts === 52; });
-  const directoryId = 'creator-sync-test';
-  await targetEvaluate(offscreenUrl, `(async()=>{const root=await navigator.storage.getDirectory();const directory=await root.getDirectoryHandle('creator-sync-test',{create:true});for(const entry of ${JSON.stringify(extracted)}){const parts=entry.path.split('/');let parent=directory;for(const part of parts.slice(0,-1))parent=await parent.getDirectoryHandle(part,{create:true});const stream=await(await parent.getFileHandle(parts.at(-1),{create:true})).createWritable();await stream.write(new Uint8Array(entry.bytes));await stream.close();}const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('kemono-archive-destinations',1);request.onupgradeneeded=()=>request.result.createObjectStore('folders');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put(directory,'creator-sync-test');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});return true;})()`);
-  await targetEvaluate(offscreenUrl, `(async()=>{for(const name of ['creator-sync-test','wrong-sync-folder']){const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle(name,{create:true});const stream=await(await directory.getFileHandle('manifest.json',{create:true})).createWritable();await stream.write(${JSON.stringify(JSON.stringify(legacyManifest))});await stream.close();}return true;})()`);
+  const directoryId = 'fanbox_20003_sync-test';
+  await targetEvaluate(offscreenUrl, `(async()=>{const root=await navigator.storage.getDirectory();const directory=await root.getDirectoryHandle('fanbox_20003_sync-test',{create:true});for(const entry of ${JSON.stringify(extracted)}){const parts=entry.path.split('/');let parent=directory;for(const part of parts.slice(0,-1))parent=await parent.getDirectoryHandle(part,{create:true});const stream=await(await parent.getFileHandle(parts.at(-1),{create:true})).createWritable();await stream.write(new Uint8Array(entry.bytes));await stream.close();}const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('kemono-archive-destinations',1);request.onupgradeneeded=()=>request.result.createObjectStore('folders');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put(directory,'fanbox_20003_sync-test');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});return true;})()`);
+  await targetEvaluate(offscreenUrl, `(async()=>{for(const name of ['fanbox_20003_sync-test','wrong-sync-folder']){const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle(name,{create:true});const stream=await(await directory.getFileHandle('manifest.json',{create:true})).createWritable();await stream.write(${JSON.stringify(JSON.stringify(legacyManifest))});await stream.close();}return true;})()`);
   const beforeFileSelection = (await send({ type: 'POST_DETAIL', jobId })).job;
   await frame.locator('#choose-sync').click();
   const pickerPage = await waitFor(() => context.pages().find(item => item.url().includes('/folder/index.html')));
@@ -165,8 +168,8 @@ try {
   await waitFor(async () => (await pickerPage.locator('#status').textContent()).includes('cancelled'));
   assert.deepEqual((await send({ type: 'POST_DETAIL', jobId })).job, beforeFileSelection);
   await pickerPage.evaluate(() => {
-    window.showOpenFilePicker = async () => [await(await(await navigator.storage.getDirectory()).getDirectoryHandle('creator-sync-test')).getFileHandle('manifest.json')];
-    window.showDirectoryPicker = async options => { globalThis.__folderStart = options.startIn?.name; globalThis.__pickerCalls = (globalThis.__pickerCalls || 0) + 1; return (await navigator.storage.getDirectory()).getDirectoryHandle(globalThis.__wrongFolder ? 'wrong-sync-folder' : 'creator-sync-test'); };
+    window.showOpenFilePicker = async () => [await(await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_20003_sync-test')).getFileHandle('manifest.json')];
+    window.showDirectoryPicker = async options => { globalThis.__folderStart = options.startIn?.name; globalThis.__pickerCalls = (globalThis.__pickerCalls || 0) + 1; return (await navigator.storage.getDirectory()).getDirectoryHandle(globalThis.__wrongFolder ? 'wrong-sync-folder' : 'fanbox_20003_sync-test'); };
   });
   await pickerPage.locator('#open-sync').click();
   await pickerPage.locator('#grant-sync').waitFor();
@@ -192,13 +195,13 @@ try {
   assert.equal(detail.totals.synced, 4); assert.equal(detail.totals.saved, 6); assert.equal(detail.totals.failed, 1); assert.equal(detail.job.archive, undefined);
   assert.equal(await targetEvaluate(offscreenUrl, 'globalThis.__mediaRequests.length'), beforeSync + 2);
   assert.equal((await worker.evaluate(() => chrome.downloads.search({}))).length, 2);
-  const readFolderIndex = () => targetEvaluate(offscreenUrl, `(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('creator-sync-test');return JSON.parse(await(await(await directory.getFileHandle('sync.json')).getFile()).text());})()`);
+  const readFolderIndex = () => targetEvaluate(offscreenUrl, `(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_20003_sync-test');return JSON.parse(await(await(await directory.getFileHandle('sync.json')).getFile()).text());})()`);
   let savedIndex = await readFolderIndex(); assert.equal(savedIndex.posts.length, 3); assert.equal(savedIndex.posts.flatMap(post => post.files).length, 6); assert(savedIndex.posts.every(post => post.files.every(file => !file.path.startsWith('ArchiveRoot/') && !file.path.startsWith('fanbox/'))));
   assert(savedIndex.posts.some(post => post.id === old.id));
   assert(savedIndex.posts.find(post => post.id === '1').files.every(file => file.path.split('/')[1].startsWith('1_')));
   assert(savedIndex.posts.find(post => post.id === '52').files.every(file => file.path.split('/')[1].startsWith('2026-10-01_52_')));
   const connectedDestination = (await send({ type: 'POST_DETAIL', jobId })).job.destination;
-  await pickerPage.evaluate(() => { window.showOpenFilePicker = async () => [await(await(await navigator.storage.getDirectory()).getDirectoryHandle('creator-sync-test')).getFileHandle('sync.json')]; });
+  await pickerPage.evaluate(() => { window.showOpenFilePicker = async () => [await(await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_20003_sync-test')).getFileHandle('sync.json')]; });
   await pickerPage.locator('#open-sync').click();
   await waitFor(async () => (await pickerPage.locator('#status').textContent()).startsWith('Sync connected.'));
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.scan.complete);
@@ -211,7 +214,7 @@ try {
   console.log('PASS: legacy manifest import, actual folder writes, per-creator sync JSON, skip existing files, no ZIP or duplicate downloads on unchanged sync.');
   console.log('PASS: sync-file selection, cancellation without changes, wrong-folder identity rejection, prefilled folder location, and reconnect from sync.json without another folder prompt.');
   const missing = savedIndex.posts.find(post => post.id === '1').files.find(file => file.quality === 'thumbnail');
-  await targetEvaluate(offscreenUrl, `(async()=>{let directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('creator-sync-test');const parts=${JSON.stringify(missing.path)}.split('/');for(const part of parts.slice(0,-1))directory=await directory.getDirectoryHandle(part);await directory.removeEntry(parts.at(-1));return true;})()`);
+  await targetEvaluate(offscreenUrl, `(async()=>{let directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_20003_sync-test');const parts=${JSON.stringify(missing.path)}.split('/');for(const part of parts.slice(0,-1))directory=await directory.getDirectoryHandle(part);await directory.removeEntry(parts.at(-1));return true;})()`);
   await worker.evaluate(primary => globalThis.__posts.unshift({ ...primary, id: '53', title: 'New post 53', attachments: [], file: { ...primary.file, path: primary.file.path.replaceAll('a', 'e') } }), primary);
   await send({ type: 'POST_DOWNLOAD', jobId, selection: syncIndex.selection, destination: 'folder' });
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.status === 'finished');
@@ -226,7 +229,7 @@ try {
   console.log('PASS: repeated sync rescans new posts, restores deleted files, retains history, and rejects mismatched creators and unsafe JSON paths.');
   const beforePermission = await targetEvaluate(offscreenUrl, 'globalThis.__mediaRequests.length');
   await worker.evaluate(primary => globalThis.__posts.unshift({ ...primary, id: '54', title: 'New post 54', attachments: [], file: { ...primary.file, path: primary.file.path.replaceAll('a', 'f') } }), primary);
-  await targetEvaluate(offscreenUrl, `(()=>{const permission=FileSystemDirectoryHandle.prototype.queryPermission;FileSystemDirectoryHandle.prototype.queryPermission=function(options){return globalThis.__denyFolder&&this.name==='creator-sync-test'?Promise.resolve('denied'):permission.call(this,options);};return true;})()`);
+  await targetEvaluate(offscreenUrl, `(()=>{const permission=FileSystemDirectoryHandle.prototype.queryPermission;FileSystemDirectoryHandle.prototype.queryPermission=function(options){return globalThis.__denyFolder&&this.name==='fanbox_20003_sync-test'?Promise.resolve('denied'):permission.call(this,options);};return true;})()`);
   await send({ type: 'POST_DOWNLOAD', jobId, selection: syncIndex.selection, destination: 'folder' });
   await waitFor(async () => (await targetEvaluate(offscreenUrl, 'globalThis.__mediaRequests.length')) >= beforePermission + 2);
   await targetEvaluate(offscreenUrl, 'globalThis.__denyFolder=true');
@@ -267,7 +270,7 @@ try {
   assert((await send({ type: 'POST_DETAIL', jobId })).job.autoDownload);
   await targetEvaluate(offscreenUrl, 'globalThis.__denyFolder=false');
   // Reselecting the same directory also preserves and resumes an automatic sync.
-  await recoveryPage.evaluate(() => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('creator-sync-test'); });
+  await recoveryPage.evaluate(() => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_20003_sync-test'); });
   await recoveryPage.locator('#choose').click();
   await waitFor(async () => (await recoveryPage.locator('#status').textContent()).includes('Download resumed'));
   assert.deepEqual((await send({ type: 'POST_DETAIL', jobId })).job.destination, pausedDestination);
@@ -281,18 +284,18 @@ try {
   await frame.locator('#destination-folder').check(); await frame.locator('#download').click();
   const newPicker = await waitFor(() => context.pages().find(item => item.url().includes('/folder/index.html')));
   await newPicker.locator('#choose').waitFor();
-  assert.equal(await newPicker.locator('#folder-name').textContent(), 'fanbox_4862787_Sample creator');
+  assert.equal(await newPicker.locator('#folder-name').textContent(), 'fanbox_20003_Sample creator');
   await newPicker.evaluate(() => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location', { create: true }); });
   await newPicker.locator('#choose').click();
   await waitFor(async () => (await newPicker.locator('#status').textContent()).startsWith('Folder connected.'));
   await newPicker.locator('#return').click();
-  await waitFor(async () => (await frame.locator('#folder-note').textContent()).startsWith('fanbox_4862787_Sample creator'));
+  await waitFor(async () => (await frame.locator('#folder-note').textContent()).startsWith('fanbox_20003_Sample creator'));
   await frame.locator('#images').check();
   await frame.locator('#download').click();
   const wrappedJobId = (await send({ type: 'SERVICE_JOBS' })).find(job => job.sourceUrl === profileUrl + '/post/1').id;
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId: wrappedJobId })).job.status === 'finished');
-  const wrapperTree = await targetEvaluate(offscreenUrl, `(async()=>{const parent=await(await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location');const root=[];for await(const entry of parent.values())root.push(entry.name);const creator=await parent.getDirectoryHandle('fanbox_4862787_Sample creator');const children=[];for await(const entry of creator.values())children.push(entry.name);return{root,children,index:JSON.parse(await(await(await creator.getFileHandle('sync.json')).getFile()).text())};})()`);
-  assert.deepEqual(wrapperTree.root, ['fanbox_4862787_Sample creator']);
+  const wrapperTree = await targetEvaluate(offscreenUrl, `(async()=>{const parent=await(await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location');const root=[];for await(const entry of parent.values())root.push(entry.name);const creator=await parent.getDirectoryHandle('fanbox_20003_Sample creator');const children=[];for await(const entry of creator.values())children.push(entry.name);return{root,children,index:JSON.parse(await(await(await creator.getFileHandle('sync.json')).getFile()).text())};})()`);
+  assert.deepEqual(wrapperTree.root, ['fanbox_20003_Sample creator']);
   assert.deepEqual(wrapperTree.children.sort(), ['duplicates.json', 'failures.json', 'full res', 'settings.json', 'sync.json']);
   assert.equal(wrapperTree.index.posts[0].files.length, 3);
   assert(wrapperTree.index.posts[0].files.every(file => file.path.startsWith('full res/2026-10-01_1_Sample post/')));
@@ -301,7 +304,7 @@ try {
   await frame.locator('#choose-folder').click();
   const existingPicker = await waitFor(() => context.pages().find(item => item.url().includes('/folder/index.html')));
   await existingPicker.locator('#choose').waitFor();
-  await existingPicker.evaluate(() => { window.showDirectoryPicker = async () => (await(await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location')).getDirectoryHandle('fanbox_4862787_Sample creator'); });
+  await existingPicker.evaluate(() => { window.showDirectoryPicker = async () => (await(await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location')).getDirectoryHandle('fanbox_20003_Sample creator'); });
   await existingPicker.locator('#choose').click();
   await waitFor(async () => (await existingPicker.locator('#status').textContent()).startsWith('Folder connected.'));
   await existingPicker.locator('#return').click();
@@ -328,7 +331,7 @@ try {
   console.log('PASS: pause/resume and persisted jobs after service-worker restart.');
   const savedDownloads = await worker.evaluate(() => chrome.downloads.search({}));
   const savedBytes = await Promise.all(savedDownloads.map(item => readFile(item.filename)));
-  const folderSnapshot = () => targetEvaluate(offscreenUrl, `(async()=>{const root=await navigator.storage.getDirectory();const files=[];async function walk(directory,path){for await(const entry of directory.values()){const name=path+'/'+entry.name;if(entry.kind==='directory')await walk(entry,name);else{const file=await entry.getFile();files.push([name,file.size,[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].join(',')]);}}}for(const name of ['creator-sync-test','new-save-location'])await walk(await root.getDirectoryHandle(name),name);return files.sort((a,b)=>a[0].localeCompare(b[0]));})()`);
+  const folderSnapshot = () => targetEvaluate(offscreenUrl, `(async()=>{const root=await navigator.storage.getDirectory();const files=[];async function walk(directory,path){for await(const entry of directory.values()){const name=path+'/'+entry.name;if(entry.kind==='directory')await walk(entry,name);else{const file=await entry.getFile();files.push([name,file.size,[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].join(',')]);}}}for(const name of ['fanbox_20003_sync-test','new-save-location'])await walk(await root.getDirectoryHandle(name),name);return files.sort((a,b)=>a[0].localeCompare(b[0]));})()`);
   const savedFolders = await folderSnapshot();
   await frame.locator('#local-data > summary').click();
   assert.equal(await frame.locator('#cache-retention').inputValue(), '5');

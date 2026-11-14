@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const root = resolve('.'), output = resolve(`.selection-check-${Date.now()}`);
 assert(output.startsWith(root + sep) && output.includes('.selection-check-'));
 await mkdir(output);
-const fixture = JSON.parse(await readFile('tests/fixtures/post-11312487.sanitized.json', 'utf8'));
+const fixture = JSON.parse(await readFile('tests/fixtures/post-10001.synthetic.json', 'utf8'));
 const image = await readFile('tests/fixtures/test-image.jpg');
 const profileUrl = `https://pawchive.pw/fanbox/user/${fixture.user}`;
 const posts = ['1', '2', '3'].map((id, i) => ({ ...fixture, id, title: `Selected post ${id}`, content: `<p>Text for post ${id}</p>`,
@@ -121,7 +121,7 @@ try {
     const picker = await waitFor(() => context.pages().find(page => page.url().includes('/folder/index.html')));
     await picker.locator('#open-sync').waitFor();
     await picker.evaluate(async extracted => {
-      const root = await navigator.storage.getDirectory(), directory = await root.getDirectoryHandle('selected-creator', { create: true });
+      const root = await navigator.storage.getDirectory(), directory = await root.getDirectoryHandle('fanbox_20001_selected-creator', { create: true });
       for (const entry of extracted) {
         const parts = entry.path.split('/'); let parent = directory;
         for (const part of parts.slice(0, -1)) parent = await parent.getDirectoryHandle(part, { create: true });
@@ -131,13 +131,15 @@ try {
       window.showOpenFilePicker = async () => [await directory.getFileHandle('sync.json')];
       window.showDirectoryPicker = async options => { globalThis.__startFile = options.startIn?.name; return directory; };
     }, extract ? extracted : []);
-    await picker.locator('#open-sync').click(); await picker.locator('#grant-sync').waitFor();
-    await picker.locator('#grant-sync').click();
+    await picker.locator('#open-sync').click();
+    await waitFor(async () => await picker.locator('#grant-sync').isVisible() || (await picker.locator('#status').textContent()).startsWith('Sync connected.'));
+    const needsGrant = await picker.locator('#grant-sync').isVisible();
+    if (needsGrant) await picker.locator('#grant-sync').click();
     await waitFor(async () => (await picker.locator('#status').textContent()).startsWith('Sync connected.'));
-    assert.equal(await picker.evaluate(() => globalThis.__startFile), 'sync.json');
+    if (needsGrant) assert.equal(await picker.evaluate(() => globalThis.__startFile), 'sync.json');
     await picker.locator('#return').click();
     await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.scan.complete);
-    await waitFor(async () => (await frame.locator('#folder-note').textContent()).startsWith('selected-creator') && !await frame.locator('#download').isDisabled());
+    await waitFor(async () => (await frame.locator('#folder-note').textContent()).startsWith('fanbox_20001_selected-creator') && !await frame.locator('#download').isDisabled());
     return picker;
   }
   let picker = await connectArchive(true);
@@ -151,7 +153,7 @@ try {
   assert.equal(mediaRequests.length, beforeFolderRequests + 1);
   assert(mediaRequests.at(-1).includes('/data' + posts[1].file.path));
   const readIndex = () => picker.evaluate(async () => {
-    const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle('selected-creator');
+    const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle('fanbox_20001_selected-creator');
     const file = await (await directory.getFileHandle('sync.json')).getFile();
     return JSON.parse(await file.text());
   });

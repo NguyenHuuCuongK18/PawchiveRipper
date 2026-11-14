@@ -1,0 +1,16 @@
+{
+  "id": "10001",
+  "user": "20001",
+  "service": "fanbox",
+  "title": "Main file with no attachments",
+  "content": "",
+  "published": "2026-01-01T12:34:56",
+  "file": {
+    "name": "fixture-image.jpeg",
+    "node": 2,
+    "path": "/bb/bb/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpeg"
+  },
+  "attachments": [],
+  "has_full": true,
+  "detail_fetched": true
+}

@@ -1,6 +1,6 @@
 {
   "name": "pawchive-ripper",
-  "version": "0.9.1",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Save Pawchive and Kemono posts, files, and Discord archives on your device.",
@@ -17,11 +17,15 @@
     "recon": "node scripts/recon.mjs",
     "package": "node scripts/package.mjs",
     "release:verify": "node scripts/verify-release.mjs",
-    "release:check": "npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run test:tolerance && npm run test:settings && npm run test:compatibility && npm run test:duplicates && npm run package && npm run release:verify",
+    "release:check": "npm run privacy:check && npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run test:tolerance && npm run test:settings && npm run test:compatibility && npm run test:duplicates && npm run test:sync && npm run test:permissions && npm run package && npm run release:verify",
     "test:compatibility": "node scripts/blocklist-acceptance.mjs",
     "test:duplicates": "node scripts/duplicates-acceptance.mjs",
+    "test:sync": "node scripts/sync-acceptance.mjs",
+    "test:permissions": "node scripts/permissions-acceptance.mjs",
     "clean": "node scripts/clean.mjs",
-    "fixtures:image": "node scripts/make-test-image.mjs"
+    "fixtures:image": "node scripts/make-test-image.mjs",
+    "fixtures:data": "node scripts/make-test-fixtures.mjs",
+    "privacy:check": "node scripts/privacy-check.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.24",

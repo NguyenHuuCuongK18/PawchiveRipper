@@ -8,7 +8,7 @@ import type { PostJob } from '../src/services/posts/types';
 import { job } from './helpers';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { scope } from './helpers';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 
 const now = Date.parse('2026-10-10T10:00:00Z');
 const archive = { state: 'saved' as const, filename: 'archive.zip', blobUrl: null, downloadId: 12, bytes: 50, entries: 1, progress: 1, total: 1, error: null };

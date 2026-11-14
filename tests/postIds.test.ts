@@ -5,7 +5,7 @@ import { createTasks, normalizePost, postRelativePath } from '../src/services/po
 import { emptySync, parseSync, recordSaved, syncKey, zipSync } from '../src/services/posts/sync';
 import type { ApiPost, PostJob, PostScope } from '../src/services/posts/types';
 
-const scope: PostScope = { origin: 'https://pawchive.pw', platform: 'patreon', creatorId: '19875180', postId: 'p-1237087' };
+const scope: PostScope = { origin: 'https://pawchive.pw', platform: 'patreon', creatorId: '20002', postId: 'p-10002' };
 const post: ApiPost = { id: scope.postId!, user: scope.creatorId, service: scope.platform, title: 'Imported post', content: 'Text',
   published: '2025-03-01T00:00:00', attachments: [], file: { name: 'image.png', path: '/aa/bb/' + 'a'.repeat(64) + '.png' } };
 const response = (value: unknown) => new Response(JSON.stringify(value));
@@ -16,19 +16,19 @@ describe('Pawchive prefixed post IDs', () => {
     expect(parsePostUrl(url)).toEqual(source);
     expect(serviceForUrl(url)).toBe('posts');
     expect(parsePostUrl(url + '/')).toEqual(source);
-    expect(parsePostUrl(url.replace('p-1237087', '1237087'))?.postId).toBe('1237087');
+    expect(parsePostUrl(url.replace('p-10002', '10002'))?.postId).toBe('10002');
   });
 
   it.each([false, true])('accepts the reported ID in a creator list (wrapped: %s)', async wrapped => {
     const transport = vi.fn().mockResolvedValue(response(wrapped ? { posts: [post] } : [post]));
     await expect(new PostClient(transport).posts({ ...scope, postId: null }, 450)).resolves.toEqual([post]);
-    expect(transport.mock.calls[0][0]).toBe(`${scope.origin}/api/v1/patreon/user/19875180?o=450`);
+    expect(transport.mock.calls[0][0]).toBe(`${scope.origin}/api/v1/patreon/user/20002?o=450`);
   });
 
   it.each([false, true])('fetches the reported single post (wrapped: %s)', async wrapped => {
     const transport = vi.fn().mockResolvedValue(response(wrapped ? { post } : post));
     await expect(new PostClient(transport).post(scope)).resolves.toEqual(post);
-    expect(transport.mock.calls[0][0]).toBe(`${scope.origin}/api/v1/patreon/user/19875180/post/p-1237087`);
+    expect(transport.mock.calls[0][0]).toBe(`${scope.origin}/api/v1/patreon/user/20002/post/p-10002`);
   });
 
   it.each([{ user: '999' }, { service: 'fanbox' }])('still rejects posts from a different creator or service: %j', async mismatch => {
@@ -37,17 +37,17 @@ describe('Pawchive prefixed post IDs', () => {
   });
 
   it('still requires the requested post ID to match exactly', async () => {
-    const client = new PostClient(vi.fn().mockResolvedValue(response({ ...post, id: '1237087' })));
+    const client = new PostClient(vi.fn().mockResolvedValue(response({ ...post, id: '10002' })));
     await expect(client.post(scope)).rejects.toThrow('different post');
   });
 
-  it.each(['p-', 'p-abc', 'p-123/extra', 'p-123%2fextra', 'p-123?other', 'p-123#other', '../123', '12:34', '9'.repeat(41), 1237087, null])('rejects invalid API post ID %j with an accurate error', async id => {
+  it.each(['p-', 'p-abc', 'p-123/extra', 'p-123%2fextra', 'p-123?other', 'p-123#other', '../123', '12:34', '9'.repeat(41), 10002, null])('rejects invalid API post ID %j with an accurate error', async id => {
     const client = new PostClient(vi.fn().mockResolvedValue(response([{ ...post, id }])));
     await expect(client.posts(scope, 450)).rejects.toThrow('Invalid post ID');
   });
 
   it.each(['p-', 'p-abc', 'p-123/extra', 'p-123%2fextra', 'p-123%3fother', 'p-123%23other', '12:34', '9'.repeat(41)])('rejects invalid post-link ID %s', id => {
-    expect(parsePostUrl(`${scope.origin}/patreon/user/19875180/post/${id}`)).toBeNull();
+    expect(parsePostUrl(`${scope.origin}/patreon/user/20002/post/${id}`)).toBeNull();
   });
 
   it('rejects an unsafe detail ID before making a request', async () => {
@@ -63,10 +63,10 @@ describe('Pawchive prefixed post IDs', () => {
     const index = emptySync(job);
     for (const task of job.tasks) {
       task.status = 'downloaded'; task.bytes = 10;
-      expect(postRelativePath(task)).toContain('/2025-03-01_p-1237087_Imported post/');
+      expect(postRelativePath(task)).toContain('/2025-03-01_p-10002_Imported post/');
       recordSaved(index, task, post.title!);
     }
-    expect(index.posts[0].id).toBe('p-1237087');
+    expect(index.posts[0].id).toBe('p-10002');
     expect(index.posts[0].files).toHaveLength(2);
     expect(parseSync(index, scope).posts).toEqual(index.posts);
     expect(parseSync(zipSync(job), scope).posts).toEqual(index.posts);

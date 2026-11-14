@@ -48,6 +48,7 @@ async function process(message: { action: string; cleanup?: ZipCacheCleanup; url
     return null;
   }
   if (message.action === 'post-folder-read') return (await folderSync(message.directoryId!, message.postJob!)) || null;
+  if (message.action === 'post-folder-import') return (await folderSync(message.directoryId!, message.postJob!, true)) || null;
   if (message.action === 'post-folder-check') return checkFolder(message.postJob!);
   if (message.action === 'post-folder-write') return writePostFile(message.postJob!, message.recordId!);
   if (message.action === 'post-folder-index') { await writePostIndex(message.postJob!); return null; }

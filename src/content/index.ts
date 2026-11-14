@@ -10,6 +10,7 @@ let previousUrl = '';
 const observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(collect, 1600); });
 function collect(): void {
   previousUrl = location.href;
+  void chrome.runtime.sendMessage({ type: 'SITE_VISIT', url: location.href }).catch(() => {});
   const scope = parseChannelUrl(location.href);
   if (!scope) { observer.disconnect(); return; }
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-src', 'srcset', 'href'] });

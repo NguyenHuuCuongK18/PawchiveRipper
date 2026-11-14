@@ -1,4 +1,3 @@
-import { requireDirectory } from '../../storage/destination';
 import { relativePathParts, writeRelativeFile } from '../../storage/folderWriter';
 import { stagedFile, removeStagedFile } from '../../storage/zipCache';
 import { postRelativePath } from './media';
@@ -7,6 +6,7 @@ import { writePostIndex } from './folder';
 import { IdenticalFileIndex } from './identicalFiles';
 import { isArchive } from './fileTypes';
 import type { ExtractedFile, PostExtraction, PostJob, PostTask } from './types';
+import { contentDigest, requireCreatorDirectory, assertCreatorPath } from './creatorSafety';
 
 interface Running { jobId: string; result: PostExtraction; worker?: Worker; timer?: ReturnType<typeof setTimeout> }
 const running = new Map<string, Running>();
@@ -17,7 +17,7 @@ export function stopExtractions(jobId?: string): void {
 }
 async function sourceFile(job: PostJob, task: PostTask): Promise<Blob> {
   if (task.status === 'downloaded' && job.destination?.kind === 'folder') {
-    const parts = relativePathParts(postRelativePath(task)); let directory: FileSystemDirectoryHandle = await requireDirectory(job.destination.directoryId);
+    const parts = relativePathParts(postRelativePath(task)); let directory: FileSystemDirectoryHandle = await requireCreatorDirectory(job.destination.directoryId, job.source);
     for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
     return (await directory.getFileHandle(parts.at(-1)!)).getFile();
   }
@@ -29,11 +29,12 @@ export function startExtraction(job: PostJob, id: string): void {
   void (async () => {
     const task = job.tasks.find(task => task.id === id); if (!task?.extraction) throw new Error('Archive extraction task was not found.');
     const file = await sourceFile(job, task);
+    const sourceDigest = await contentDigest(file);
     if (running.get(entryKey) !== item) return;
     const worker = item.worker = new Worker(chrome.runtime.getURL('extract-worker.js'), { type: 'module' });
     const finish = (error?: string, files = item.result.files) => {
       worker.terminate(); clearTimeout(item.timer); item.worker = undefined;
-      item.result = { state: error ? 'failed' : 'done', files, ...(error ? { error } : {}) };
+      item.result = { state: error ? 'failed' : 'done', files, sourceDigest, ...(error ? { error } : {}) };
     };
     const reset = () => { clearTimeout(item.timer); item.timer = setTimeout(() => finish('Archive extraction stopped making progress. The original was kept.'), 120_000); };
     worker.onmessage = event => {
@@ -51,8 +52,8 @@ export async function deduplicateExtraction(job: PostJob, id: string): Promise<E
   const result = extractionStatus(job.id, id); if (!result || result.state === 'extracting') throw new Error('Archive extraction is not ready.');
   if (!job.selection.deduplicate) return result.files;
   const task = job.tasks.find(task => task.id === id)!;
-  const index = new IdenticalFileIndex(), seen = new Set<string>();
-  const folder = job.destination?.kind === 'folder' ? await requireDirectory(job.destination.directoryId) : undefined;
+  const index = new IdenticalFileIndex(`${job.destination?.kind === 'folder' ? job.destination.directoryId : job.id}:${task.quality}`), seen = new Set<string>();
+  const folder = job.destination?.kind === 'folder' ? await requireCreatorDirectory(job.destination.directoryId, job.source) : undefined;
   const readFolder = async (path: string): Promise<Blob> => {
     let directory: FileSystemDirectoryHandle = folder!; const parts = relativePathParts(path);
     for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
@@ -92,9 +93,8 @@ export async function commitExtraction(job: PostJob, id: string): Promise<Extrac
   for (const file of result.files) {
     if (file.duplicateOf) { files.push(file); continue; }
     const blob = await stagedFile(job.id, file.id); if (blob.size !== file.bytes) throw new Error('Extracted file is incomplete.');
-    // Extraction output is derived from this archive and owns its stable path.
-    // Re-extraction must replace stale contents instead of creating "(1)" copies.
-    files.push({ ...file, path: await writeRelativeFile(job.destination.directoryId, file.path, blob, true) });
+    // Reuse equal bytes; preserve a changed or user-created file at this path.
+    files.push({ ...file, path: await writeRelativeFile(job.destination.directoryId, file.path, blob, false, job.source) });
   }
   return files;
 }
@@ -107,17 +107,21 @@ export async function removeExtractedArchive(job: PostJob, id: string): Promise<
   const task = job.tasks.find(task => task.id === id);
   if (job.destination?.kind !== 'folder' || task?.extraction?.state !== 'done' || !task.extraction.files.length) throw new Error('Archive extraction is incomplete. The original was kept.');
   await writePostIndex(job);
-  const root = await requireDirectory(job.destination.directoryId);
+  const root = await requireCreatorDirectory(job.destination.directoryId, job.source);
   for (const entry of task.extraction.files) {
     let directory: FileSystemDirectoryHandle = root; const parts = relativePathParts(entry.duplicateOf?.path || entry.path);
     for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
-    if ((await (await directory.getFileHandle(parts.at(-1)!)).getFile()).size !== entry.bytes) throw new Error('An extracted file is incomplete. The original was kept.');
+    const output = await (await directory.getFileHandle(parts.at(-1)!)).getFile();
+    if (output.size !== entry.bytes || !entry.digest || await contentDigest(output) !== entry.digest) throw new Error('An extracted file is incomplete or changed. The original was kept.');
   }
   let directory: FileSystemDirectoryHandle = root; const parts = relativePathParts(postRelativePath(task));
+  assertCreatorPath(postRelativePath(task));
   try {
     for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
     const file = await (await directory.getFileHandle(parts.at(-1)!)).getFile();
-    if (file.size !== task.bytes) throw new Error('The compressed file changed after extraction. It was kept.');
+    if (file.size !== task.bytes || !task.extraction.sourceDigest || await contentDigest(file) !== task.extraction.sourceDigest) throw new Error('The compressed file changed after extraction or its identity is unknown. It was kept.');
+    const current = await requireCreatorDirectory(job.destination.directoryId, job.source), resolved = await current.resolve(directory);
+    if (!resolved || resolved.join('/') !== parts.slice(0, -1).join('/')) throw new Error('The archive source escaped its creator folder. It was kept.');
     await directory.removeEntry(parts.at(-1)!);
   } catch (error) { if (!(error instanceof DOMException && error.name === 'NotFoundError')) throw error; }
 }

@@ -1,6 +1,7 @@
 import { detectImage } from '../../core/mediaResolver';
 import { retryAfter } from '../../api/kemonoClient';
-import { stageImage, stagedFile, stageStream } from '../../storage/zipCache';
+import { stageImage, stagedFile, stageStream, readResume, clearResume, stageResumable, RESUME_CHUNK_BYTES } from '../../storage/zipCache';
+import { fetchAttachment } from './resume';
 import { safePostMediaUrl } from './media';
 import type { ArchivedPost, PostScope, PostTask, PostTransferProgress } from './types';
 import { abortable, transferWatchdog } from './transferWatchdog';
@@ -23,21 +24,26 @@ export async function transferPost(jobId: string, task: PostTask, post: Archived
   const report = (phase: PostTransferProgress['phase']) => progress?.({ receivedBytes, totalBytes, phase, updatedAt: Date.now() });
   try {
     signal.throwIfAborted(); report('connecting');
-    const response = await fetch(url, { credentials: 'omit', redirect: 'error', signal });
+    const checkpoint = task.kind === 'file' ? await readResume(jobId, task.id, url) : undefined;
+    signal.throwIfAborted();
+    const session = await fetchAttachment(url, checkpoint, signal), { response } = session;
     if (!response.ok) return { failure: `File HTTP ${response.status}`, status: response.status, retryAfterMs: retryAfter(response.headers.get('retry-after')) };
     if (!response.body) throw new Error('The attachment is empty.');
     const mime = (response.headers.get('content-type') || '').split(';')[0].trim();
     if (['text/html', 'application/xhtml+xml', 'application/json'].includes(mime) && !/\.(?:html?|xhtml|json)$/i.test(task.path)) { await response.body.cancel(); throw new Error('The server returned an error page instead of the attachment.'); }
-    const expected = Number(response.headers.get('content-length'));
-    totalBytes = expected > 0 && !response.headers.get('content-encoding') ? expected : null;
+    const expected = session.total;
+    totalBytes = expected; receivedBytes = session.offset;
+    if (task.kind === 'file' && !session.offset) await clearResume(jobId, task.id);
     watchdog.reset(); report('downloading');
     const stream = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ transform(chunk, output) {
       if (chunk.byteLength) { receivedBytes += chunk.byteLength; watchdog.reset(); report('downloading'); }
       output.enqueue(chunk);
     } }));
-    const file = await stageStream(jobId, task.id, stream, signal);
+    const file = task.kind === 'file' && session.etag && expected && expected > RESUME_CHUNK_BYTES
+      ? await stageResumable(jobId, task.id, stream, signal, { url, etag: session.etag, total: expected, checkpoint: session.offset ? checkpoint : undefined })
+      : await stageStream(jobId, task.id, stream, signal);
     signal.throwIfAborted(); watchdog.reset(true); report('validating');
-    if (!file.size || (expected > 0 && !response.headers.get('content-encoding') && expected !== file.size)) throw new Error('The attachment transfer is incomplete.');
+    if (!file.size || (expected !== null && expected !== file.size)) throw new Error('The attachment transfer is incomplete.');
     const header = new Uint8Array(await file.slice(0, 512).arrayBuffer());
     if (!/\.(?:html?|xhtml)$/i.test(task.path) && /^\s*(?:<!doctype html|<html)/i.test(new TextDecoder().decode(header))) throw new Error('The server returned an error page instead of the attachment.');
     const format = detectImage(header);

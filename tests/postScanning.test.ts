@@ -6,8 +6,8 @@ import { normalizePost } from '../src/services/posts/media';
 import { deleteLocalRecords, getPostJob, savePostJob } from '../src/storage/database';
 import type { ApiPost, PostJob, PostScope } from '../src/services/posts/types';
 
-const source: PostScope = { origin: 'https://pawchive.pw', platform: 'patreon', creatorId: '19875180', postId: null };
-const post: ApiPost = { id: 'p-1237087', user: source.creatorId, service: source.platform, title: 'Imported post', content: 'Text', attachments: [], detail_fetched: true };
+const source: PostScope = { origin: 'https://pawchive.pw', platform: 'patreon', creatorId: '20002', postId: null };
+const post: ApiPost = { id: 'p-10002', user: source.creatorId, service: source.platform, title: 'Imported post', content: 'Text', attachments: [], detail_fetched: true };
 
 function pausedScan(): PostJob {
   const error = 'Post response belongs to a different creator or service.';
@@ -44,12 +44,12 @@ it.each(['resume', 'retry'] as const)('%s continues an existing failed scan at o
   const resumed = (await getPostJob(job.id))!;
   expect(resumed).toMatchObject({ status: 'scanning', error: null, scan: { offset: 500, pages: 10, error: null, attempts: 0 } });
   expect(resumed.posts.slice(0, 450)).toEqual(job.posts);
-  expect(resumed.posts[450]).toMatchObject({ id: 'p-1237087' });
+  expect(resumed.posts[450]).toMatchObject({ id: 'p-10002' });
   expect(resumed.scan.fingerprints[0]).toBe('earlier-page');
-  expect(fetch.mock.calls[0][0]).toBe(`${source.origin}/api/v1/patreon/user/19875180?o=450`);
+  expect(fetch.mock.calls[0][0]).toBe(`${source.origin}/api/v1/patreon/user/20002?o=450`);
   vi.setSystemTime(Date.now() + 1000); await tickPosts();
   expect(await getPostJob(job.id)).toMatchObject({ status: 'ready', scan: { complete: true, total: 451, error: null } });
-  expect(fetch.mock.calls[1][0]).toBe(`${source.origin}/api/v1/patreon/user/19875180?o=500`);
+  expect(fetch.mock.calls[1][0]).toBe(`${source.origin}/api/v1/patreon/user/20002?o=500`);
 });
 
 it('fetches missing detail for a prefixed post before continuing pagination', async () => {
@@ -63,7 +63,7 @@ it('fetches missing detail for a prefixed post before continuing pagination', as
   const stored = (await getPostJob(job.id))!;
   expect(stored).toMatchObject({ status: 'scanning', error: null, detailQueue: [], scan: { offset: 500, error: null } });
   expect(stored.posts[450]).toMatchObject({ id: post.id, content: 'Text' });
-  expect(fetch.mock.calls[0][0]).toBe(`${source.origin}/api/v1/patreon/user/19875180/post/p-1237087`);
+  expect(fetch.mock.calls[0][0]).toBe(`${source.origin}/api/v1/patreon/user/20002/post/p-10002`);
 });
 
 it('retries incomplete pages with backoff, then records and skips the page without losing earlier posts', async () => {
@@ -95,6 +95,6 @@ it('retries incomplete pages with backoff, then records and skips the page witho
   await postCommand({ type: 'POST_ACTION', jobId: job.id, action: 'retry' }); await tickPosts();
   const resumed = (await getPostJob(job.id))!;
   expect(resumed).toMatchObject({ status: 'ready', error: null, scan: { offset: 1250, pages: 25, total: 1151, failures: [], attempts: 0, error: null, complete: true } });
-  expect(fetch.mock.calls.at(-1)![0]).toBe(`${source.origin}/api/v1/patreon/user/19875180?o=1150`);
+  expect(fetch.mock.calls.at(-1)![0]).toBe(`${source.origin}/api/v1/patreon/user/20002?o=1150`);
   expect(resumed.posts.slice(0, 1150)).toEqual(job.posts); expect(resumed.posts[1150].id).toBe(post.id);
 });

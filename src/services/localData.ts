@@ -1,6 +1,7 @@
 import { getJobs, getMedia, getPostJobs, deleteLocalRecords, saveJob, savePostJob } from '../storage/database';
 import { directoryKey, forgetDirectories } from '../storage/destination';
 import { offscreen } from '../background/offscreenBridge';
+import { getLibrary } from './posts/library';
 
 export type ClearLocalData = { type: 'LOCAL_CLEAR'; scope: 'job'; jobId: string } | { type: 'LOCAL_CLEAR'; scope: 'all' };
 
@@ -41,6 +42,7 @@ export async function clearLocalData(message: ClearLocalData): Promise<void> {
     // A selected directory can be shared by several jobs; retain live connections.
     for (const job of discord) if (job.id !== jobId && job.destination?.kind === 'folder') keys.delete(directoryKey(job));
     for (const job of posts) if (job.id !== jobId && job.destination?.kind === 'folder') keys.delete(job.destination.directoryId);
+    for (const creator of (await getLibrary()).creators) keys.delete(creator.directoryId);
     await forgetDirectories([...keys]);
   }
   await deleteLocalRecords(jobId);

@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 const root = resolve('.'), output = resolve(`.service-check-tolerance-${Date.now()}`);
 assert(output.startsWith(root + sep) && output.includes('.service-check-tolerance-'));
 await mkdir(output);
-const profileUrl = 'https://pawchive.pw/patreon/user/19875180';
-const base = { user: '19875180', service: 'patreon', title: 'Available text', content: 'Saved list text', attachments: [], detail_fetched: true };
+const profileUrl = 'https://pawchive.pw/patreon/user/20002';
+const base = { user: '20002', service: 'patreon', title: 'Available text', content: 'Saved list text', attachments: [], detail_fetched: true };
 const posts = ['910', '911', '912', '913', '914'].map(id => ({ ...base, id }));
 posts[0].file = { name: 'missing.psd', path: '/aa/bb/' + 'a'.repeat(64) + '.psd' };
 let context, diagnostic = async () => ({});
@@ -55,7 +55,7 @@ try {
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.scan.complete);
   let view = await send({ type: 'POST_DETAIL', jobId });
   assert.equal(view.totals.posts, 3); assert.equal(view.totals.discoveryFailures, 3);
-  await waitFor(async () => (await frame.locator('#summary').textContent()).includes('3 discovery errors'));
+  await waitFor(async () => (await frame.locator('#summary').textContent()).includes('3 scan errors'));
   assert.equal(await frame.locator('#retry').isVisible(), true);
   await worker.evaluate(async () => {
     if (!(await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT] })).length)
@@ -92,11 +92,11 @@ try {
   assert((await json('sync.json')).posts.every(post => post.files.every(file => file.kind === 'text')));
   await zip.close();
   console.log('PASS: missing details, invalid creator records and exhausted pages do not block available posts; ZIP contains saved text and complete discovery/media error reports.');
-  await targetEvaluate(`(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('tolerance-folder',{create:true});const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('kemono-archive-destinations',1);request.onupgradeneeded=()=>request.result.createObjectStore('folders');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put(directory,'tolerance-folder');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();return true;})()`);
-  await send({ type: 'POST_FOLDER', jobId, directoryId: 'tolerance-folder', name: 'Tolerance folder' });
+  await targetEvaluate(`(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('patreon_20002_Tolerance',{create:true});const identity=await directory.getFileHandle("sync.json",{create:true});const writer=await identity.createWritable();await writer.write(${JSON.stringify(JSON.stringify({format:"archive-ripper-post-sync",version:1,source:{origin:"https://pawchive.pw",platform:"patreon",creatorId:"20002"},creatorName:"Tolerance",selection,posts:[]}))});await writer.close();const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('kemono-archive-destinations',1);request.onupgradeneeded=()=>request.result.createObjectStore('folders');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put(directory,'patreon_20002_Tolerance');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();return true;})()`);
+  await send({ type: 'POST_FOLDER', jobId, directoryId: 'patreon_20002_Tolerance', name: 'patreon_20002_Tolerance' });
   await send({ type: 'POST_DOWNLOAD', jobId, selection, destination: 'folder' });
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.status === 'finished');
-  const readFolder = name => targetEvaluate(`(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('tolerance-folder');return JSON.parse(await(await(await directory.getFileHandle(${JSON.stringify(name)})).getFile()).text());})()`);
+  const readFolder = name => targetEvaluate(`(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('patreon_20002_Tolerance');return JSON.parse(await(await(await directory.getFileHandle(${JSON.stringify(name)})).getFile()).text());})()`);
   assert.equal((await readFolder('failures.json')).length, 4);
   assert.equal((await readFolder('sync.json')).posts.length, 3);
   await worker.evaluate(() => { globalThis.__recover = true; });

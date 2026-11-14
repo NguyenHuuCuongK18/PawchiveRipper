@@ -84,6 +84,7 @@ export async function discoverPosts(job: PostJob, client: PostClient): Promise<v
   } catch (error) {
     job.scan.attempts++; job.scan.error = error instanceof Error ? error.message : 'Post discovery failed.';
     job.scan.errorStatus = error instanceof RequestError ? error.status : null;
+    if (error instanceof RequestError && error.status === 429) job.scan.nextAt = Date.now() + Math.max(2000, error.retryAfterMs);
     const retryable = error instanceof RequestError && error.retryable;
     if (retryable && job.scan.attempts < 3) job.scan.nextAt = Date.now() + Math.max(2000 * 2 ** (job.scan.attempts - 1), error.retryAfterMs);
     else if (error instanceof RequestError && ![401, 403, 429].includes(error.status) && (retryable || [404, 410, 422].includes(error.status))) {

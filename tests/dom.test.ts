@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { it, expect } from 'vitest';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
 import { scanDom } from '../src/content/domScanner';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
 import { mergeMedia } from '../src/core/deduplicator';
 import { scope } from './helpers';
-it('recovers all real rendered media and merges with API records', () => {
-  document.body.innerHTML = readFileSync('tests/fixtures/channel.sanitized.html', 'utf8');
+it('recovers all generated rendered media and merges with API records', () => {
+  document.body.innerHTML = readFileSync('tests/fixtures/channel.synthetic.html', 'utf8');
   const dom = scanDom(document, scope); expect(dom.messageCount).toBe(32); expect(dom.records).toHaveLength(57);
   const merged = mergeMedia(normalizeMessages(messages, scope, 'test-job'), dom.records.map(record => ({ ...record, jobId: 'test-job' })));
   expect(merged).toHaveLength(57); expect(merged[0].sourceType).toBe('merged'); expect(merged[0].originalUrl).toContain('https://n3.kemono.cr/data/');
-  expect(merged[0].publishedAtUtc).toBe('2024-08-02T18:17:01.880Z');
+  expect(merged[0].publishedAtUtc).toBe('2026-01-01T12:34:56.123Z');
 });
 it('ignores avatars and emoji and handles a supported lazy thumbnail', () => {
   // Synthetic edge case, not a claim about live HTML structure.

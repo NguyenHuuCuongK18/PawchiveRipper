@@ -2,11 +2,11 @@
 import type { Job } from '../core/types';
 export function directoryKey(job: Job): string { return job.destination?.kind === 'folder' ? job.destination.directoryId || job.id : job.id; }
 export interface ArchiveDirectory extends FileSystemDirectoryHandle {
-  queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
-  requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
+  queryPermission(options: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+  requestPermission(options: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
 }
 export interface DirectoryPickerWindow extends Window {
-  showDirectoryPicker?: (options: { id: string; mode: 'readwrite'; startIn?: FileSystemHandle }) => Promise<ArchiveDirectory>;
+  showDirectoryPicker?: (options: { id: string; mode: 'read' | 'readwrite'; startIn?: FileSystemHandle }) => Promise<ArchiveDirectory>;
   showOpenFilePicker?: (options: { id: string; multiple: false; excludeAcceptAllOption: boolean; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
 }
 let connection: Promise<IDBDatabase> | undefined;
@@ -39,7 +39,7 @@ export async function forgetDirectories(keys?: string[]): Promise<void> {
   await done;
 }
 export class FolderPermissionError extends Error {
-  constructor() { super('Folder access is required. Click Restore folder access, then Allow folder access. Keep that tab open while saving.'); }
+  constructor() { super('Folder access is required.'); }
 }
 export async function requireDirectory(jobId: string): Promise<ArchiveDirectory> {
   const handle = await getDirectory(jobId);

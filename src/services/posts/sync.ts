@@ -42,12 +42,15 @@ function readFile(value: unknown, postId: string, legacy = false): PostSyncFile 
         if (typeof ref.id !== 'string' || ref.id.length > 600 || typeof ref.path !== 'string' || ref.path.length > 2000 || relativePathParts(ref.path)[0] !== file.quality) throw new Error('Invalid duplicate file reference.');
         duplicateOf = { id: ref.id, path: ref.path };
       }
-      return { id: entry.id, path: entry.path, bytes: entry.bytes as number, ...(duplicateOf ? { duplicateOf } : {}) };
+      const digest = entry.digest;
+      if (digest !== undefined && (typeof digest !== 'string' || !/^sha256-chunks-v1:[a-f0-9]{64}$/.test(digest))) throw new Error('Invalid extracted file digest.');
+      return { id: entry.id, path: entry.path, bytes: entry.bytes as number, ...(duplicateOf ? { duplicateOf } : {}), ...(digest ? { digest: digest as string } : {}) };
     });
     if (new Set(extracted.map(entry => entry.id)).size !== extracted.length || new Set(extracted.map(entry => entry.path)).size !== extracted.length) throw new Error('Duplicate extracted file history.');
   }
   if (file.originalKept !== undefined && (file.originalKept !== false || !extracted?.length || file.kind === 'text')) throw new Error('Invalid extracted archive history.');
-  return { id, quality: file.quality as PostSyncFile['quality'], kind: file.kind as PostSyncFile['kind'], path, bytes: file.bytes as number, ...(extracted ? { extracted } : {}), ...(file.originalKept === false ? { originalKept: false as const } : {}) };
+  if (file.sourceDigest !== undefined && (typeof file.sourceDigest !== 'string' || !/^sha256-chunks-v1:[a-f0-9]{64}$/.test(file.sourceDigest) || !extracted?.length)) throw new Error('Invalid extracted source digest.');
+  return { id, quality: file.quality as PostSyncFile['quality'], kind: file.kind as PostSyncFile['kind'], path, bytes: file.bytes as number, ...(extracted ? { extracted } : {}), ...(file.originalKept === false ? { originalKept: false as const } : {}), ...(file.sourceDigest ? { sourceDigest: file.sourceDigest as string } : {}) };
 }
 export function parseSync(input: unknown, scope: PostScope): PostSyncIndex {
   const data = object(input);
@@ -63,6 +66,17 @@ export function parseSync(input: unknown, scope: PostScope): PostSyncIndex {
   if (!source) throw new Error('Invalid creator in sync JSON.');
   const index: PostSyncIndex = { format: 'archive-ripper-post-sync', version: 1, source: { origin: source.origin, platform: source.platform, creatorId: source.creatorId }, creatorName: String(legacy ? data.creator || source.creatorId : data.creatorName || source.creatorId).slice(0, 300), updatedAt: new Date().toISOString(), selection: validSelection(data.selection), posts: [] };
   assertSyncSource(index, scope);
+  if (data.remote !== undefined) {
+    const remote = object(data.remote);
+    if (Object.keys(remote).length > 100000 || Object.entries(remote).some(([id, hash]) => !isPostId(id) || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) throw new Error('Invalid remote post fingerprints.');
+    index.remote = { ...remote } as Record<string, string>;
+  }
+  if (data.scope !== undefined) {
+    const scope = object(data.scope);
+    if (scope.postId !== null && !isPostId(scope.postId)) throw new Error('Invalid saved archive scope.');
+    if (scope.selectedPostIds !== undefined && (!Array.isArray(scope.selectedPostIds) || scope.selectedPostIds.length > 100000 || scope.selectedPostIds.some(id => !isPostId(id)))) throw new Error('Invalid selected post scope.');
+    index.scope = { postId: scope.postId as string | null, ...(scope.selectedPostIds ? { selectedPostIds: [...new Set(scope.selectedPostIds as string[])] } : {}) };
+  }
   if (!Array.isArray(data.posts) || data.posts.length > 100000) throw new Error('Invalid post list in sync JSON.');
   let count = 0;
   const ids = new Set<string>();
@@ -94,16 +108,16 @@ export function parseSync(input: unknown, scope: PostScope): PostSyncIndex {
   }
   return index;
 }
-export function emptySync(job: Pick<PostJob, 'source' | 'creatorName' | 'selection'>): PostSyncIndex {
+export function emptySync(job: Pick<PostJob, 'source' | 'creatorName' | 'selection'> & Partial<Pick<PostJob, 'selectedPostIds'>>): PostSyncIndex {
   const { origin, platform, creatorId } = job.source;
-  return { format: 'archive-ripper-post-sync', version: 1, source: { origin, platform, creatorId }, creatorName: job.creatorName, updatedAt: new Date().toISOString(), selection: job.selection, posts: [] };
+  return { format: 'archive-ripper-post-sync', version: 1, source: { origin, platform, creatorId }, creatorName: job.creatorName, updatedAt: new Date().toISOString(), selection: job.selection, posts: [], scope: { postId: job.source.postId, ...(job.selectedPostIds ? { selectedPostIds: [...job.selectedPostIds] } : {}) } };
 }
 function preserveExtractedHistory(previous: PostSyncFile | undefined, incoming: PostSyncFile): PostSyncFile {
   if (incoming.extracted?.length || !previous?.extracted?.length) return { ...incoming };
   // The media ID includes the source hash. If path and size also match, a sparse
   // history entry must not erase the completed extraction record for that source.
   if (previous.kind !== 'file' || incoming.kind !== 'file' || previous.path !== incoming.path || previous.bytes !== incoming.bytes) return { ...incoming };
-  return { ...incoming, extracted: previous.extracted.map(file => ({ ...file })), ...(previous.originalKept === false ? { originalKept: false as const } : {}) };
+  return { ...incoming, extracted: previous.extracted.map(file => ({ ...file })), ...(previous.sourceDigest ? { sourceDigest: previous.sourceDigest } : {}), ...(previous.originalKept === false ? { originalKept: false as const } : {}) };
 }
 export function mergeSync(base: PostSyncIndex | undefined, incoming: PostSyncIndex): PostSyncIndex {
   if (!base) return structuredClone(incoming);
@@ -119,6 +133,8 @@ export function mergeSync(base: PostSyncIndex | undefined, incoming: PostSyncInd
     }
   }
   merged.selection = incoming.selection; merged.updatedAt = new Date().toISOString();
+  if (incoming.remote) merged.remote = { ...merged.remote, ...incoming.remote };
+  if (incoming.scope) merged.scope = structuredClone(incoming.scope);
   return merged;
 }
 export function recordSaved(index: PostSyncIndex, task: PostTask, title: string): void {
@@ -126,7 +142,7 @@ export function recordSaved(index: PostSyncIndex, task: PostTask, title: string)
   let post = index.posts.find(post => post.id === task.postId);
   if (!post) { post = { id: task.postId, title, files: [] }; index.posts.push(post); }
   const file: PostSyncFile = { id: syncKey(task.id), quality: task.quality, kind: task.kind, path: task.path, bytes: task.bytes,
-    ...(task.extraction?.state === 'done' && task.extraction.files.length ? { extracted: task.extraction.files, originalKept: false as const } : {}) };
+    ...(task.extraction?.state === 'done' && task.extraction.files.length ? { extracted: task.extraction.files, ...(task.extraction.sourceDigest ? { sourceDigest: task.extraction.sourceDigest } : {}), ...(!task.extraction.retainOriginal ? { originalKept: false as const } : {}) } : {}) };
   const old = post.files.findIndex(previous => previous.id === file.id);
   if (old < 0) post.files.push(file); else post.files[old] = preserveExtractedHistory(post.files[old], file);
   index.updatedAt = new Date().toISOString();

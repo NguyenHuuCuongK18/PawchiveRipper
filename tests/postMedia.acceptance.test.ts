@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import fixture from './fixtures/post-11312487.sanitized.json';
+import fixture from './fixtures/post-10001.synthetic.json';
 import manifest from '../src/manifest.json';
 import { PostClient } from '../src/services/posts/client';
 import { createTasks, normalizePost, postRelativePath, safePostMediaUrl } from '../src/services/posts/media';

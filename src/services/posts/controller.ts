@@ -1,4 +1,4 @@
-import { getJobs, getPostJob, getPostJobs, getSavingPostJobs, getPostJobsForDownload, saveJob, savePostJob } from '../../storage/database';
+import { getJobs, getPostJob, getPostJobs, getSavingPostJobs, getPostJobsForDownload, getSetting, putSetting, saveJob, savePostJob } from '../../storage/database';
 import { offscreen, release } from '../../background/offscreenBridge';
 import { safeSegment } from '../../core/filenameBuilder';
 import { parsePostUrl, postSourceUrl } from '../registry';
@@ -14,14 +14,18 @@ import { detectedFileTypes } from './fileTypes';
 import { defaultSelection } from './settings';
 import { duplicateReport, planDuplicates } from './duplicates';
 import { isArchive } from './fileTypes';
+import { findCreator, rememberCreator, completeLibraryRun, postFingerprint } from './library';
 
 const client = new PostClient();
+const liveProgress = new Map<string, Map<string, PostTransferProgress>>();
+const detailCache = new Map<string, { version: string; value: ReturnType<typeof buildPostDetail> }>();
 const delay = (attempt: number, retryAfter = 0) => Math.max(retryAfter, 2000 * 2 ** Math.max(0, attempt - 1));
 async function requireJob(id: string): Promise<PostJob> { const job = await getPostJob(id); if (!job) throw new Error('Post archive was not found.'); return job; }
 function resetScan(job: PostJob): void {
   job.posts = []; job.detailQueue = []; job.tasks = []; job.duplicates = []; job.status = 'scanning'; job.resumeStatus = 'scanning';
   job.scan = { offset: 0, pages: 0, total: job.source.postId ? 1 : null, complete: false, error: null, attempts: 0, nextAt: 0, fingerprints: [], mediaVersion: POST_MEDIA_VERSION };
   job.nextAt = 0; job.error = null; job.archive = undefined; job.autoDownload = undefined;
+  job.postFingerprints = undefined;
 }
 async function startAutomaticDownload(job: PostJob): Promise<void> {
   const selection = job.autoDownload;
@@ -43,8 +47,8 @@ export async function pausePosts(): Promise<void> {
     await savePostJob(job);
   }
 }
-export function postDetail(job: PostJob, limit = 100) {
-  const { posts, tasks, sync, detailQueue, selectedPostIds, duplicates: _duplicates, ...summary } = job;
+function buildPostDetail(job: PostJob, limit = 100) {
+  const { posts, tasks, sync, detailQueue, selectedPostIds, postFingerprints: _postFingerprints, probeHead: _probeHead, duplicates: _duplicates, ...summary } = job;
   const { fingerprints: _fingerprints, failures: _failures, retryQueue: _retryQueue, ...scan } = summary.scan;
   const syncedPosts = new Set(sync?.posts.map(post => post.id));
   const selectedIds = selectedPostIds === undefined ? undefined : new Set(selectedPostIds);
@@ -74,13 +78,22 @@ export function postDetail(job: PostJob, limit = 100) {
     if (task.status === 'failed') totals.retryable++;
     if (saved || task.status === 'failed' || task.status === 'unavailable') totals.processed++;
   }
-  const activeTransfers = tasks.filter(task => task.status === 'transferring').slice(0, 8).map(task => ({ name: task.path.split('/').at(-1)!, progress: task.progress }));
+  const activeTransfers = tasks.filter(task => task.status === 'transferring').slice(0, 8).map(task => ({ id: task.id, name: task.path.split('/').at(-1)!, progress: task.progress }));
   const queued = tasks.filter(task => task.status === 'queued');
   const retryAt = queued.length ? Math.max(job.nextAt, Math.min(...queued.map(task => task.nextAt))) : 0;
   const archives = selectedPosts(job).flatMap(post => post.media.filter(media => isArchive(media.name) || isArchive(media.path)).map(media => ({ id: `${post.id}:${media.path}`, postId: post.id, title: post.title, name: media.name })));
   const duplicateSummary = duplicateReport(job).filter(item => item.status === 'saved');
   return { job: { ...summary, scan }, archives, duplicates: duplicateSummary.length, duplicateBytes: duplicateSummary.reduce((sum, item) => sum + (item.bytes || 0), 0), needsMediaRescan: job.scan.mediaVersion !== POST_MEDIA_VERSION, originalOrigins: [...origins], totals, fileTypes: detectedFileTypes(job), activeTransfers, retryAt, canSkipError: canSkipPostError(job), allPostsSelected: selectedPostIds === undefined,
     posts: posts.slice(0, Math.min(1000, Math.max(1, limit))).map(post => ({ id: post.id, title: post.title, files: post.media.length, hasFull: post.hasFull, selected: !selectedIds || selectedIds.has(post.id) })) };
+}
+export function postDetail(job: PostJob, limit = 100) {
+  const version = `${job.revision}:${job.updatedAt}:${job.scan.mediaVersion}:${limit}`;
+  let cached = detailCache.get(job.id);
+  if (!cached || cached.version !== version || !job.revision || !Number.isFinite(Date.parse(job.createdAt))) {
+    cached = { version, value: buildPostDetail(job, limit) }; detailCache.set(job.id, cached);
+    if (detailCache.size > 8) detailCache.delete(detailCache.keys().next().value!);
+  }
+  return { ...cached.value, activeTransfers: cached.value.activeTransfers.map(item => ({ ...item, progress: liveProgress.get(job.id)?.get(item.id) || item.progress })) };
 }
 async function saveZip(job: PostJob): Promise<void> {
   const archive = job.archive;
@@ -117,6 +130,8 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     const metadata = await Promise.allSettled([client.profile(source), job.scan.total === null ? client.total(source) : Promise.resolve(job.scan.total)]);
     if (metadata[0].status === 'fulfilled') job.creatorName = metadata[0].value as string;
     if (metadata[1].status === 'fulfilled') job.scan.total = metadata[1].value as number | null;
+    const creator = await findCreator(source);
+    if (creator) { job.destination = { kind: 'folder', directoryId: creator.directoryId, name: creator.folderName }; job.selection = creator.selection; }
     await savePostJob(job); return { jobId: job.id };
   }
   const job = await requireJob(message.jobId);
@@ -144,6 +159,7 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
       await pausePosts();
       resetScan(job);
     }
+    await rememberCreator(job);
   } else if (message.type === 'POST_SYNC_IMPORT') {
     if (job.status === 'downloading') throw new Error('Pause this download before importing a sync JSON.');
     const index = parseSync(message.json, job.source);
@@ -154,6 +170,7 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
   } else if (message.type === 'POST_DOWNLOAD') {
     if (!job.scan.complete || ['scanning', 'downloading'].includes(job.status)) throw new Error('Finish scanning before starting another download.');
     const selection = validSelection(message.selection);
+    if (job.automatic) selection.keepArchives = true;
     const destination = message.destination || job.destination?.kind || 'zip';
     if (!['folder', 'zip'].includes(destination)) throw new Error('Invalid download destination.');
     if (destination === 'zip' && job.sync) throw new Error('Sync extends an existing folder. Choose Save to folder.');
@@ -166,6 +183,8 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     }
     if (destination === 'zip') job.destination = { kind: 'zip' };
     job.autoDownload = undefined;
+    job.postFingerprints = {};
+    for (let offset = 0; offset < job.posts.length; offset += 32) for (const [id, hash] of await Promise.all(job.posts.slice(offset, offset + 32).map(async post => [post.id, await postFingerprint(post)]))) job.postFingerprints[id] = hash;
     const previous = new Map(job.tasks.map(task => [task.id, task]));
     const planned = planDuplicates(createTasks(job, selection), !!selection.deduplicate);
     job.tasks = planned.tasks; job.duplicates = planned.duplicates; job.selection = selection;
@@ -189,6 +208,9 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
         job.tasks = job.tasks.filter(task => task !== removed); job.duplicates.push(duplicate);
       }
       job.sync.selection = selection;
+      const tracked = await findCreator(job.source);
+      job.sync.scope = { postId: tracked ? tracked.source.postId : job.source.postId,
+        ...(job.source.postId && tracked?.selectedPostIds ? { selectedPostIds: tracked.selectedPostIds } : job.selectedPostIds ? { selectedPostIds: job.selectedPostIds } : {}) };
     }
     job.selection = selection; job.status = 'downloading'; job.resumeStatus = 'downloading'; job.error = null;
     if (job.archive) await release(job.archive.blobUrl);
@@ -238,6 +260,13 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
 }
 async function scan(job: PostJob): Promise<void> {
   await discoverPosts(job, client);
+  if (job.scan.errorStatus === 429) {
+    const cooldowns = await getSetting<Record<string, number>>('host-cooldowns') || {};
+    cooldowns[job.source.origin] = Math.max(cooldowns[job.source.origin] || 0, job.scan.nextAt); await putSetting('host-cooldowns', cooldowns);
+  }
+  if (job.automatic && job.scan.complete && !job.posts.length && !job.scan.failures?.length) {
+    job.status = 'finished'; job.autoDownload = undefined; await completeLibraryRun(job); await savePostJob(job); return;
+  }
   await savePostJob(job);
   if (job.scan.complete && job.autoDownload) await startAutomaticDownload(job);
 }
@@ -250,19 +279,28 @@ async function reconcileTasks(job: PostJob): Promise<void> {
     const recordId = task.id;
     const result = results[index];
     if (result?.progress && (task.progress?.updatedAt !== result.progress.updatedAt || task.progress?.receivedBytes !== result.progress.receivedBytes || task.progress?.phase !== result.progress.phase)) {
-      task.progress = result.progress; changed = true;
+      task.progress = result.progress;
+      let progress = liveProgress.get(job.id); if (!progress) { progress = new Map(); liveProgress.set(job.id, progress); }
+      progress.set(task.id, result.progress);
+      if (liveProgress.size > 8) liveProgress.delete(liveProgress.keys().next().value!);
     }
     if (result?.state === 'transferring') continue;
     if (result?.bytes !== undefined) {
       task.bytes = result.bytes; task.status = 'staged'; task.error = null;
-      if (task.kind === 'image' && result.ext) task.path = task.path.replace(/\.[^/.]+$/, '.' + result.ext);
+      if (task.kind === 'image' && result.ext && !task.preservePath) task.path = task.path.replace(/\.[^/.]+$/, '.' + result.ext);
       if (task.kind !== 'text') transferSucceeded(job, 'posts');
     } else {
       task.error = result?.failure || 'Transfer interrupted; retrying.';
       const retryable = !result?.status || result.status === 429 || result.status >= 500;
       task.status = retryable && task.attempts < 3 ? 'queued' : 'failed';
       task.nextAt = Date.now() + delay(task.attempts, result?.retryAfterMs);
-      if (result?.status === 429) job.nextAt = Math.max(job.nextAt, task.nextAt);
+      if (result?.status === 429) {
+        job.nextAt = Math.max(job.nextAt, task.nextAt);
+        if (task.url) {
+          const host = new URL(task.url).origin, cooldowns = await getSetting<Record<string, number>>('host-cooldowns') || {};
+          cooldowns[host] = Math.max(cooldowns[host] || 0, task.nextAt); await putSetting('host-cooldowns', cooldowns);
+        }
+      }
       if (task.kind !== 'text') transferFailed(job, 'posts', result?.status, result?.retryAfterMs);
       // Only a missing original triggers fallback. Rate limits and other errors keep their retry policy.
       if (result?.status === 404 || result?.status === 410) {
@@ -273,6 +311,7 @@ async function reconcileTasks(job: PostJob): Promise<void> {
       }
     }
     completed.push(recordId); changed = true;
+    liveProgress.get(job.id)?.delete(recordId);
   }
   // Commit the batch before releasing transfer results so worker restarts retain successes.
   if (changed) await savePostJob(job);
@@ -286,13 +325,14 @@ async function reconcileExtractions(job: PostJob): Promise<void> {
     if (job.selection.deduplicate && result.files.length) result.files = await offscreen<ExtractedFile[]>('post-extract-deduplicate', { postJob: job, recordId: task.id });
     if (job.destination?.kind === 'folder') {
       result.files = await offscreen<ExtractedFile[]>('post-extract-commit', { postJob: job, recordId: task.id });
+      result.retainOriginal = job.selection.keepArchives === true;
       job.sync ||= emptySync(job); task.extraction = result;
       recordSaved(job.sync, task, job.posts.find(post => post.id === task.postId)?.title || task.postId);
       await savePostJob(job); await offscreen('post-folder-index', { postJob: job });
     } else { task.extraction = result; await savePostJob(job); }
     await offscreen('post-extract-forget', { jobId: job.id, recordId: task.id, postJob: job });
   }
-  if (job.destination?.kind === 'folder') for (const task of job.tasks) if (task.extraction?.state === 'done' && !task.extraction.originalRemoved) {
+  if (job.destination?.kind === 'folder') for (const task of job.tasks) if (task.extraction?.state === 'done' && !task.extraction.originalRemoved && !task.extraction.retainOriginal && !job.selection.keepArchives) {
     await offscreen('post-extract-remove-original', { postJob: job, recordId: task.id });
     task.extraction.originalRemoved = true; await savePostJob(job);
   }
@@ -307,6 +347,7 @@ async function reconcileExtractions(job: PostJob): Promise<void> {
 }
 export async function tickPosts(): Promise<boolean> {
   const jobs = await getPostJobs(['scanning', 'downloading']);
+  const hostCooldowns = await getSetting<Record<string, number>>('host-cooldowns') || {};
   const notBefore = Math.max(0, ...jobs.map(job => Math.max(job.nextAt, job.scan.nextAt)));
   for (const job of jobs) {
     if (job.status === 'scanning') { if (Date.now() >= notBefore) await scan(job); return true; }
@@ -327,14 +368,18 @@ export async function tickPosts(): Promise<boolean> {
           }
           await savePostJob(job);
         }
+        const committed: string[] = [];
         for (const task of job.tasks) if (task.status === 'staged') {
           const saved = await offscreen<{ path: string; bytes: number }>('post-folder-write', { postJob: job, recordId: task.id });
           Object.assign(task, saved, { status: 'downloaded' });
           job.sync ||= emptySync(job); assertSyncSource(job.sync, job.source);
           recordSaved(job.sync, task, job.posts.find(post => post.id === task.postId)?.title || task.postId);
           await savePostJob(job);
+          committed.push(task.id);
+        }
+        if (committed.length) {
           await offscreen('post-folder-index', { postJob: job });
-          await offscreen('post-cache-remove', { jobId: job.id, recordId: task.id }).catch(() => {});
+          await Promise.all(committed.map(recordId => offscreen('post-cache-remove', { jobId: job.id, recordId }).catch(() => {})));
         }
       } catch (error) {
         await offscreen('post-transfer-stop', { jobId: job.id });
@@ -360,6 +405,7 @@ export async function tickPosts(): Promise<boolean> {
     const slots = Math.max(0, limit - active), now = Date.now();
     const buckets: Record<PostTask['kind'], PostTask[]> = { text: [], image: [], file: [] };
     if (slots && now >= Math.max(notBefore, job.nextAt)) for (const task of job.tasks) {
+      if (task.url && task.status === 'queued') task.nextAt = Math.max(task.nextAt, hostCooldowns[new URL(task.url).origin] || 0);
       if (task.status === 'queued' && task.nextAt <= now && buckets[task.kind].length < slots) buckets[task.kind].push(task);
       if (buckets.text.length === slots) break;
     }
@@ -372,7 +418,16 @@ export async function tickPosts(): Promise<boolean> {
     if (job.tasks.some(task => ['queued', 'transferring'].includes(task.status))) return true;
     if (job.tasks.some(task => ['staged', 'downloaded'].includes(task.status) && task.extraction && ['pending', 'extracting'].includes(task.extraction.state))) return true;
     if (job.destination?.kind === 'folder') {
-      try { await offscreen('post-folder-index', { postJob: job }); job.status = 'finished'; await offscreen('zip-clear', { jobId: job.id }).catch(() => {}); }
+      try {
+        if (job.sync && !job.scan.failures?.length) {
+          const covered = new Set(job.tasks.filter(task => task.kind === 'text' && task.status === 'downloaded').map(task => task.postId));
+          job.sync.remote = { ...job.sync.remote, ...Object.fromEntries(Object.entries(job.postFingerprints || {}).filter(([id]) => covered.has(id))) };
+        }
+        await offscreen('post-folder-index', { postJob: job }); job.status = 'finished';
+        if (!job.automatic) await rememberCreator(job);
+        await completeLibraryRun(job);
+        await offscreen('zip-clear', { jobId: job.id }).catch(() => {});
+      }
       catch (error) { job.status = 'paused'; job.error = error instanceof Error ? error.message : 'Could not update sync.json. Check folder access, then Resume.'; }
       await savePostJob(job); return true;
     }

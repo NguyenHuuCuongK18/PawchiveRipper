@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const root = resolve('.'), output = resolve(`.media-check-${Date.now()}`);
 assert(output.startsWith(root + sep) && output.includes('.media-check-'));
 await mkdir(output);
-const post = JSON.parse(await readFile('tests/fixtures/post-11312487.sanitized.json', 'utf8'));
+const post = JSON.parse(await readFile('tests/fixtures/post-10001.synthetic.json', 'utf8'));
 const image = await readFile('tests/fixtures/test-image.jpg');
 const source = `https://pawchive.pw/fanbox/user/${post.user}/post/${post.id}`;
 const hosts = ['kemono.cr', 'pawchive.pw'].flatMap(domain =>
@@ -116,9 +116,9 @@ try {
   try {
     const entries = await zip.getEntries();
     for (const quality of ['full res']) {
-      const entry = entries.find(entry => entry.filename.includes(`/${quality}/2026-01-28_${post.id}_`) && entry.filename.endsWith('.jpg'));
+      const entry = entries.find(entry => entry.filename.includes(`/${quality}/2026-01-01_${post.id}_`) && entry.filename.endsWith('.jpg'));
       assert(entry); assert.deepEqual(Buffer.from(await entry.getData(new Uint8ArrayWriter())), image);
-      assert(entries.some(entry => entry.filename.includes(`/${quality}/2026-01-28_${post.id}_`) && entry.filename.endsWith('/post.txt')));
+      assert(entries.some(entry => entry.filename.includes(`/${quality}/2026-01-01_${post.id}_`) && entry.filename.endsWith('/post.txt')));
     }
   } finally { await zip.close(); }
   console.log('PASS: empty-attachments post saves only original bytes and text by default, in dated folders, through native extension fetch.');
@@ -142,7 +142,7 @@ try {
   originalStatus = 404;
   const missing = await saveCase(true, true);
   assert.equal(missing.detail.totals.saved, 2); assert.equal(missing.detail.totals.failed, 0); assert.equal(missing.detail.totals.thumbnails, 1);
-  assert.equal(missing.requests.length, 2); assert(missing.images.every(path => path.includes(`/thumbnail/2026-01-28_${post.id}_`)));
+  assert.equal(missing.requests.length, 2); assert(missing.images.every(path => path.includes(`/thumbnail/2026-01-01_${post.id}_`)));
   assert.equal(missing.files.find(file => file.kind === 'image').quality, 'thumbnail');
   assert(missing.files.find(file => file.kind === 'image').id.includes(':thumbnail:'));
   const disabled = await saveCase(false, true);

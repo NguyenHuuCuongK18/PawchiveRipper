@@ -8,7 +8,7 @@ Save Patreon/Fanbox posts and Discord archives from **Pawchive** and **Kemono** 
 
 Requires a Chromium browser supporting Manifest V3 (Chrome/Edge 120+; compatible Brave versions). Creator-folder saving also requires the File System Access API.
 
-1. Download **pawchive-ripper-0.9.1.zip** from the [release assets](https://github.com/NguyenHuuCuongK18/PawchiveRipper/releases/tag/v0.9.1) and extract it into a permanent folder.
+1. Download **pawchive-ripper-1.1.0.zip** from the [release assets](https://github.com/NguyenHuuCuongK18/PawchiveRipper/releases/tag/v1.1.0) and extract it into a permanent folder.
 2. Open **chrome://extensions** (or **edge://extensions** / **brave://extensions**) and enable **Developer mode**.
 3. Choose **Load unpacked** and select the extracted folder containing **manifest.json**.
 4. Refresh an open **pawchive.pw** or **kemono.cr** tab. Click the extension icon to open the overlay.
@@ -46,6 +46,26 @@ fanbox_CreatorId_CreatorName/
 Post dates use UTC. Invalid/missing dates use **unknown-date**. Generated text contains the source URL and selected post content; external embeds are recorded rather than downloaded.
 
 ## Update an existing archive
+
+Open **Creators & sync**, then **Connect archive folders**. Choose your archive root on the read-only import page. Only folders named `fanbox_ID_Name` or `patreon_ID_Name` with valid `sync.json` or supported legacy `manifest.json` are connected. Import does not change archive files or grant write access.
+
+Select creators individually or use **Select all** / **Clear selection**.
+
+- **Allow first-sync folders:** approve selected creators awaiting their first sync. Each saved folder is preloaded; click **Allow folder** and confirm. Already-authorized folders are skipped. This grants access without starting downloads.
+- **Check selected:** check recent posts once, without downloads.
+- **Sync selected:** check the full archive and save missing or changed files. This also repairs missing files when recent posts have not changed.
+- **Stop:** clear the batch queue and pause its active save. Saved files stay.
+- **Auto sync:** choose **Off**, **Check only**, or **Auto sync** for scheduled checks. Bulk buttons work independently of this setting.
+
+Automatic checks run at most every 30 minutes per creator while Pawchive/Kemono is open. Full automatic scans run initially, after recent changes, and weekly. Batches process one creator at a time, wait behind current work, and retain their queue after a worker restart. Permission failures are skipped so other selected creators can continue. Existing duplicate preferences and single-post/subset scopes are preserved; bulk and automatic sync keep compressed originals.
+
+**First sync needed** means no saved comparison yet; it does not confirm updates. **No recent changes** describes recent posts only. **Needs permission** means use **Allow access** before saving. Expand **Details** for folder names, timestamps and errors.
+
+Connections survive job and cache cleanup. Browser permission can expire, but **Allow access** reuses the stored creator folder. Keep the access tab open while saving. **Clear all extension data** removes connections and pending batches; saved archives remain on disk. See [sync behavior and safety](docs/AUTO_SYNC.md) for implementation details.
+
+All direct folder writes require both the creator naming scheme and matching validated archive identity metadata. Existing directories without proper metadata are refused; only a newly created empty creator directory can be initialized. Writes are limited to managed quality/post/extraction paths and known metadata filenames. Conflicting extraction outputs are retained alongside the new version. Removing an extracted compressed source requires cryptographic identities for the source and every retained output; older histories without that evidence retain their compressed source. Legacy Discord parent-folder writes are disabled; use ZIP export.
+
+These are application and browser-handle restrictions. Windows reparse-point/junction behavior is not an independently enforced OS sandbox; strict OS-level no-follow enforcement would require a native helper. Automated browser safety checks use disposable browser-private fixture folders, never the user's archive.
 
 1. Extract an earlier ZIP if necessary.
 2. Open that creator or the next post you want to save.
@@ -86,7 +106,7 @@ Open a supported **/discord/server/ServerId** or **/discord/server/ServerId/Chan
 - Use **Scan again** for stale media URLs. Site access failures, rate limits or repeated bad API pages can pause discovery; check the site tab before retrying.
 - **Storage & history** lists temporary caches and jobs. Automatic cache cleanup defaults to five idle minutes; active jobs and paused downloads are protected. Removing a cache/job or clearing local extension data asks for confirmation and leaves downloaded ZIPs and chosen archive folders on disk.
 
-Jobs, scan history and folder handles stay in extension-owned IndexedDB; temporary files use private browser storage. ZIP exports need space for staged files plus the output ZIP. There is no telemetry, account synchronization or server component. Extension requests omit cookies.
+Jobs, scan history and folder handles stay in extension-owned IndexedDB; temporary files use private browser storage. Large file transfers can resume from closed 8 MiB private chunks when the server supplies a strong ETag and byte-range support. Changed validators, invalid ranges and unsupported servers restart safely. Assembling resumed files temporarily needs space for the chunks plus the completed staged file. ZIP exports also need space for their output ZIP. There is no telemetry, account synchronization or server component. Extension requests omit cookies.
 
 [Pawchive Blocklist](https://github.com/NguyenHuuCuongK18/Pawchive-blocklist) can run alongside Ripper. Its hidden cards do not define the download scope: Ripper reads the API independently. Use Ripper's own post/archive selection.
 
@@ -101,7 +121,7 @@ npm run check
 npm run release:check
 ~~~
 
-Load **dist/** after building. The complete release check includes seven isolated browser suites, packaging and byte-for-byte ZIP verification. The coexistence suite needs a sibling Blocklist checkout; setup and individual commands are in [development notes](docs/DEVELOPMENT.md).
+Load **dist/** after building. The complete release check includes eight isolated browser suites, packaging and byte-for-byte ZIP verification. The coexistence suite needs a sibling Blocklist checkout; setup and individual commands are in [development notes](docs/DEVELOPMENT.md).
 
 **npm run package** produces the extension ZIP plus **releases/SHA256SUMS.txt**. **npm run release:verify** checks their contents, versions, checksums and bundled notices. **npm run clean** removes generated test output, browser profiles, old local packages and release output; it preserves source, dependencies and the built extension.
 

@@ -3,6 +3,54 @@ import { sha256, relativePathParts } from './folderWriter';
 import { BlobReader, ZipWriter } from '@zip.js/zip.js';
 import { channelFolder, serverFolder } from '../core/filenameBuilder';
 import { csv, manifest } from './manifestExporter';
+import { strongETag, type ResumeCheckpoint } from '../services/posts/resume';
+
+export const RESUME_CHUNK_BYTES = 8 * 1024 * 1024;
+export async function readResume(jobId: string, id: string, url: string): Promise<ResumeCheckpoint | undefined> {
+  try {
+    const directory = await jobDirectory(jobId), name = await cacheName(id);
+    const file = await (await directory.getFileHandle(name + '.resume')).getFile();
+    if (file.size > 4096) return undefined;
+    const data = JSON.parse(await file.text());
+    if (data.url !== url || !strongETag(data.etag) || !Number.isSafeInteger(data.total) || !Number.isSafeInteger(data.bytes) || data.bytes <= 0 || data.bytes >= data.total || data.bytes % RESUME_CHUNK_BYTES || data.bytes / RESUME_CHUNK_BYTES > 100000) return undefined;
+    const files: File[] = [];
+    for (let part = 0; part < data.bytes / RESUME_CHUNK_BYTES; part++) { const file = await (await directory.getFileHandle(name + '.part.' + part)).getFile(); if (file.size !== RESUME_CHUNK_BYTES) return undefined; files.push(file); }
+    return { url, etag: data.etag, total: data.total, bytes: data.bytes, files };
+  } catch (error) { if (error instanceof DOMException && error.name === 'NotFoundError' || error instanceof SyntaxError) return undefined; throw error; }
+}
+export async function clearResume(jobId: string, id: string): Promise<void> {
+  try {
+    const directory = await jobDirectory(jobId), name = await cacheName(id);
+    for await (const entry of (directory as IterableDirectory).values()) if (entry.kind === 'file' && (entry.name === name + '.resume' || entry.name.startsWith(name + '.part.') && /^\d+$/.test(entry.name.slice((name + '.part.').length)))) await directory.removeEntry(entry.name);
+  } catch (error) { if (!(error instanceof DOMException && error.name === 'NotFoundError')) throw error; }
+}
+// Private immutable chunks avoid copying an ever-growing file at every
+// checkpoint. An abort retains only fully closed, validator-bound chunks.
+export async function stageResumable(jobId: string, id: string, input: ReadableStream<Uint8Array>, signal: AbortSignal, session: { url: string; etag: string; total: number; checkpoint?: ResumeCheckpoint }): Promise<File> {
+  const directory = await jobDirectory(jobId, true), name = await cacheName(id), files = [...session.checkpoint?.files || []];
+  const reader = input.getReader(); let chunks: Uint8Array<ArrayBuffer>[] = [], pending = 0, completed = session.checkpoint?.bytes || 0;
+  const cancel = () => { void reader.cancel(signal.reason).catch(() => {}); }; signal.addEventListener('abort', cancel, { once: true });
+  async function write(name: string, blob: Blob) {
+    const handle = await directory.getFileHandle(name, { create: true }), output = await handle.createWritable();
+    try { await output.write(blob); await output.close(); return await handle.getFile(); } catch (error) { await output.abort().catch(() => {}); throw error; }
+  }
+  try {
+    for (;;) {
+      signal.throwIfAborted(); const { value, done } = await reader.read(); if (done) break;
+      for (let offset = 0; offset < value.length;) {
+        const count = Math.min(RESUME_CHUNK_BYTES - pending, value.length - offset);
+        chunks.push(new Uint8Array(value.subarray(offset, offset + count))); pending += count; offset += count;
+        if (pending === RESUME_CHUNK_BYTES) {
+          const file = await write(name + '.part.' + files.length, new Blob(chunks)); files.push(file); completed += pending; chunks = []; pending = 0;
+          await write(name + '.resume', new Blob([JSON.stringify({ url: session.url, etag: session.etag, total: session.total, bytes: completed })]));
+        }
+      }
+    }
+    signal.throwIfAborted(); if (completed + pending !== session.total) throw new Error('The attachment transfer is incomplete.');
+    const file = await stageStream(jobId, id, new Blob([...files, ...chunks]).stream(), signal);
+    await clearResume(jobId, id).catch(() => {}); return file;
+  } finally { signal.removeEventListener('abort', cancel); await reader.cancel().catch(() => {}); reader.releaseLock(); }
+}
 
 export class ZipStorageError extends Error {
   constructor() { super('ZIP cache could not be written. Free some disk space, then Resume.'); }

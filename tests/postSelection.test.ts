@@ -8,7 +8,7 @@ import { emptySync, recordSaved, zipSync } from '../src/services/posts/sync';
 import { changePostSelection } from '../src/services/posts/selection';
 import { deleteLocalRecords, getPostJob, savePostJob } from '../src/storage/database';
 import type { ApiPost, PostJob } from '../src/services/posts/types';
-import fixture from './fixtures/post-11312487.sanitized.json';
+import fixture from './fixtures/post-10001.synthetic.json';
 
 function job(single = false): PostJob {
   const source = { origin: 'https://pawchive.pw', platform: 'fanbox' as const, creatorId: fixture.user, postId: single ? '1' : null };

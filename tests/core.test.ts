@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
-import first from './fixtures/channel-1268993704975274117-0.sanitized.json';
-import second from './fixtures/channel-1268993704975274117-150.sanitized.json';
+import messages from './fixtures/channel-2222222222222222222-0.synthetic.json';
+import first from './fixtures/channel-3333333333333333333-0.synthetic.json';
+import second from './fixtures/channel-3333333333333333333-150.synthetic.json';
 import { normalizeMessages, normalizeTimestamp } from '../src/core/mediaNormalizer';
 import { mergeMedia } from '../src/core/deduplicator';
 import { candidates, detectImage } from '../src/core/mediaResolver';
@@ -9,15 +9,15 @@ import { safeSegment, buildFilename } from '../src/core/filenameBuilder';
 import { advancePage } from '../src/core/pagination';
 import { csv, manifest } from '../src/storage/manifestExporter';
 import { checkpoint, scope, job } from './helpers';
-describe('sanitized live channel fixture', () => {
-  it('indexes all 57 attachments from 32 real messages without fabricating originals', () => {
+describe('synthetic channel fixture', () => {
+  it('indexes all 57 attachments from 32 generated messages without fabricating originals', () => {
     const records = normalizeMessages(messages, scope, 'test-job');
     expect(messages).toHaveLength(32); expect(records).toHaveLength(57);
     const bird = records.find(record => record.originalFilename === 'bird_01.png')!;
     expect(bird.messageId).toBe(scope.channelId);
-    expect(bird.thumbnailUrl).toBe('https://img.kemono.cr/thumbnail/data/82/79/8279311a88d313cf25b6f1ad302ac7f82203f9712829b82785b0b3fac3e0871e.png');
+    expect(bird.thumbnailUrl).toBe('https://img.kemono.cr/thumbnail/data/aa/aa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png');
     expect(bird.attachmentId).toBeNull(); expect(bird.discordCdnUrl).toBeNull(); expect(bird.originalUrl).toBeNull();
-    expect(bird.publishedRaw).toBe('2024-08-02T18:17:01.880000'); expect(bird.publishedAtUtc).toBe('2024-08-02T18:17:01.880Z');
+    expect(bird.publishedRaw).toBe('2026-01-01T12:34:56.123456'); expect(bird.publishedAtUtc).toBe('2026-01-01T12:34:56.123Z');
     expect(mergeMedia(records, records)).toHaveLength(57);
   });
   it('preserves distinct attachment ordinals even when names and paths repeat', () => {
@@ -28,7 +28,7 @@ describe('sanitized live channel fixture', () => {
   });
   it('retains byte validation separately from the original hash', () => {
     const record = normalizeMessages(messages, scope, 'test-job')[0];
-    record.bytes = 55959; record.sha256 = 'eb1d7a6022f5772f1e7b8cf8d94223b271601c43dc15b29ef6899d5f7aadab43';
+    record.bytes = 55959; record.sha256 = '00000000000000000000000000000000000000000000000000000000000001db';
     expect(record.sha256).not.toBe(record.kemonoFileHash);
     expect(JSON.parse(manifest(job(), [record])).media[0].bytes).toBe(55959);
   });
@@ -38,9 +38,9 @@ describe('sanitized live channel fixture', () => {
     expect(records[0].attachmentId).toBeNull(); expect(records[0].publishedAtUtc).toBeNull();
   });
 });
-describe('measured pagination', () => {
+describe('generated multi-page pagination', () => {
   it('processes both pages and requires a validated empty page to finish', () => {
-    let cp = checkpoint('1268993704975274117');
+    let cp = checkpoint('3333333333333333333');
     cp = advancePage(cp, first); expect(cp.offset).toBe(150); expect(cp.coverage).toBe('scanning');
     cp = advancePage(cp, second); expect(cp.offset).toBe(300); expect(cp.coverage).toBe('scanning');
     cp = advancePage(cp, []); expect(cp.messageIds).toHaveLength(209); expect(cp.coverage).toBe('complete'); expect(cp.terminal).toBe('empty-page');
@@ -59,7 +59,7 @@ describe('files and source policy', () => {
   it('uses safe folders and deterministic publication-based filenames', () => {
     expect(safeSegment('CON')).toBe('_CON'); expect(safeSegment('../evil\\name')).not.toMatch(/[\\/]/);
     const record = normalizeMessages(messages, scope, 'test-job')[0];
-    expect(buildFilename(record, 'png')).toContain('/2024-08-02_181701Z_1268995994440302725_001_');
+    expect(buildFilename(record, 'png')).toContain('/2026-01-01_123456Z_2222222222222222222_001_');
     record.publishedAtUtc = null; expect(buildFilename(record, 'jpg')).toContain('unknown-date');
   });
   it('replaces Unicode characters Chromium rejects while preserving Japanese text and emoji', () => {

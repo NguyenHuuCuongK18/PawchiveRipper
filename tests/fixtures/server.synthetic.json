@@ -1,0 +1,591 @@
+{
+  "id": "1111111111111111111",
+  "name": "Fixture server",
+  "channels": [
+    {
+      "id": "2222222222222222222",
+      "server_id": "1111111111111111111",
+      "name": "Main images",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 0,
+      "post_count": 31
+    },
+    {
+      "id": "3333333333333333333",
+      "server_id": "1111111111111111111",
+      "name": "Multi-page channel",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 1,
+      "post_count": 208
+    },
+    {
+      "id": "4444444444444444444",
+      "server_id": "1111111111111111111",
+      "name": "Empty channel",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 2,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555503",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 4",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 3,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555504",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 5",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 4,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555505",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 6",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 5,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555506",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 7",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 6,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555507",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 8",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 7,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555508",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 9",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 8,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555509",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 10",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 9,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555510",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 11",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 10,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555511",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 12",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 11,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555512",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 13",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 12,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555513",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 14",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 13,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555514",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 15",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 14,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555515",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 16",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 15,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555516",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 17",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 16,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555517",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 18",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 17,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555518",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 19",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 18,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555519",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 20",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 19,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555520",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 21",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 20,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555521",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 22",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 21,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555522",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 23",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 22,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555523",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 24",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 23,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555524",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 25",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 24,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555525",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 26",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 25,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555526",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 27",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 26,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555527",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 28",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 27,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555528",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 29",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 28,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555529",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 30",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 29,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555530",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 31",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 30,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555531",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 32",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 31,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555532",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 33",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 32,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555533",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 34",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 33,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555534",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 35",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 34,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555535",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 36",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 35,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555536",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 37",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 36,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555537",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 38",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 37,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555538",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 39",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 38,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555539",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 40",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 39,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555540",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 41",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 40,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555541",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 42",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 41,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555542",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 43",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 42,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555543",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 44",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 43,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555544",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 45",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 44,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555545",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 46",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 45,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555546",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 47",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 46,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555547",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 48",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 47,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555548",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 49",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 48,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555549",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 50",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 49,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555550",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 51",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 50,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555551",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 52",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 51,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555552",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 53",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 52,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555553",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 54",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 53,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555554",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 55",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 54,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555555",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 56",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 55,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555556",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 57",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 56,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555557",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 58",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 57,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555558",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 59",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 58,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555559",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 60",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 59,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555560",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 61",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 60,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555561",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 62",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 61,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555562",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 63",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 62,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555563",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 64",
+      "parent_channel_id": "2222222222222222222",
+      "type": 11,
+      "position": 63,
+      "post_count": 0
+    },
+    {
+      "id": "5555555555555555564",
+      "server_id": "1111111111111111111",
+      "name": "Fixture channel 65",
+      "parent_channel_id": null,
+      "type": 0,
+      "position": 64,
+      "post_count": 0
+    }
+  ]
+}

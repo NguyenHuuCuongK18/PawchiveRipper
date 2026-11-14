@@ -11,11 +11,11 @@ export interface ApiPost {
 }
 export interface PostMedia { id: string; name: string; path: string; kind: 'image' | 'file'; thumbnailUrl: string | null; originalUrl: string | null }
 export interface ArchivedPost { id: string; title: string; content: string; published: string | null; hasFull: boolean | null; media: PostMedia[]; embed: unknown }
-export interface PostSelection { quality: 'thumbnail' | 'full res' | 'both'; images: boolean; files: boolean; text: boolean; fallbackToThumbnail?: boolean; excludedFileTypes?: string[]; extractArchives?: boolean; deduplicate?: boolean; excludedAttachmentIds?: string[] }
+export interface PostSelection { quality: 'thumbnail' | 'full res' | 'both'; images: boolean; files: boolean; text: boolean; fallbackToThumbnail?: boolean; excludedFileTypes?: string[]; extractArchives?: boolean; keepArchives?: boolean; deduplicate?: boolean; excludedAttachmentIds?: string[] }
 export interface FileReference { id: string; path: string }
-export interface ExtractedFile { id: string; path: string; bytes: number; duplicateOf?: FileReference }
+export interface ExtractedFile { id: string; path: string; bytes: number; duplicateOf?: FileReference; digest?: string }
 export interface PostDuplicate { postId: string; path: string; duplicateOf: string; keptTaskId: string; existing?: boolean; bytes?: number; retainedPaths?: string[] }
-export interface PostExtraction { state: 'pending' | 'extracting' | 'done' | 'failed'; files: ExtractedFile[]; error?: string; originalRemoved?: boolean }
+export interface PostExtraction { state: 'pending' | 'extracting' | 'done' | 'failed'; files: ExtractedFile[]; error?: string; originalRemoved?: boolean; sourceDigest?: string; retainOriginal?: boolean }
 export interface PostTransferProgress { receivedBytes: number; totalBytes: number | null; phase: 'connecting' | 'downloading' | 'validating'; updatedAt: number }
 export interface PostTask {
   id: string; postId: string; quality: Quality; kind: 'image' | 'file' | 'text'; url: string | null; path: string;
@@ -29,12 +29,15 @@ export interface PostTask {
   fallbackReason?: string;
   fallbackChecked?: boolean;
   alternateUrls?: string[];
+  preservePath?: boolean;
 }
-export interface PostSyncFile { id: string; quality: Quality; kind: PostTask['kind']; path: string; bytes: number; extracted?: ExtractedFile[]; originalKept?: false }
+export interface PostSyncFile { id: string; quality: Quality; kind: PostTask['kind']; path: string; bytes: number; extracted?: ExtractedFile[]; originalKept?: false; sourceDigest?: string }
 export interface PostSyncIndex {
   format: 'archive-ripper-post-sync'; version: 1;
   source: Omit<PostScope, 'postId'>; creatorName: string; updatedAt: string; selection: PostSelection;
   posts: { id: string; title: string; files: PostSyncFile[] }[];
+  remote?: Record<string, string>;
+  scope?: { postId: string | null; selectedPostIds?: string[] };
 }
 export type PostDestination = { kind: 'zip' } | { kind: 'folder'; directoryId: string; name: string };
 export interface PostScanFailure {
@@ -51,6 +54,11 @@ export interface PostJob {
   transferPolicy?: TransferPolicy;
   selectedPostIds?: string[];
   duplicates?: PostDuplicate[];
+  automatic?: boolean;
+  libraryManual?: boolean;
+  postFingerprints?: Record<string, string>;
+  revision?: number;
+  probeHead?: string;
 }
 export type PostCommand =
   | { type: 'POST_START'; url: string; expectedPosts?: number | null }

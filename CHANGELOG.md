@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0 — 2026-11-14
+
+- Add Allow first-sync folders: preload selected creator folders needing permission, request each grant from a click, and advance without browsing again.
+- Skip authorized, completed and unselected creators; validate folder names and current archive JSON, support denial/retry/skip, and keep permission grants separate from download actions.
+- Add permission-queue unit tests and an isolated Chromium permission workflow with archive-byte preservation checks.
+- Replace captured metadata/HTML and live identities with reproducible synthetic fixtures; add publish/staged privacy checks and keep research captures out of fixture directories.
+
+- Add Select all, Clear selection, Check selected, Sync selected and Stop, with a persistent bulk queue independent of automatic-sync mode.
+- Shorten status labels and move explanations, folder paths and timestamps under Details. Simplify download, storage and permission messages.
+- Replace ambiguous sync warnings with specific recent-check results, explicit Off/Check only/Auto sync modes, permission actions and readable creator cards.
+- Add an opt-in persistent creator library, read-only root import, automatic recent-post checks, weekly metadata reconciliation, check-only mode and direct folder-access restoration.
+- Retain creator connections independently of individual jobs, preserve single-post/subset scopes, and save portable remote text fingerprints for edited-post revisions.
+- Preserve recorded output locations and post folders across remote title/filename changes, including repairs used by shared-file references.
+- Require matching creator directory names and validated archive JSON at the filesystem writer. Block legacy parent-folder writes and reject unmanaged paths.
+- Preserve conflicting extraction outputs, retain originals during automatic sync, and require bounded cryptographic content identities before removing compressed sources.
+- Keep exact duplicate checks, bound collision-comparison memory, batch sync-index commits, cache progress summaries, and avoid rewriting full job records for transient byte progress.
+- Resume large attachments from closed private chunks only with matching strong ETags and validated byte ranges; safely restart unsupported or changed responses.
+- Share host rate-limit deadlines across creator checks and transfer jobs, and retain quick-list baselines independently of hydrated post details.
+- Add isolated filesystem-boundary unit tests and an automatic-sync browser suite covering monthly reposts, edited text, job cleanup, worker restart and unrelated-folder preservation.
+
 ## 0.9.1 — 2026-11-09
 
 - Prepare the renamed Pawchive Ripper repository for public distribution with a focused usage README, development guide and versioned release notes.
